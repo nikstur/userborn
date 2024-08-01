@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 /// System users/groups get an ID in the range from 1 to 999 (inclusive).
 ///
 /// Fails if there are no unused IDs in the respective ranges.
-pub fn allocate_id(already_allocated_ids: &BTreeSet<u32>, is_normal: bool) -> Result<u32> {
+pub fn allocate(already_allocated_ids: &BTreeSet<u32>, is_normal: bool) -> Result<u32> {
     if is_normal {
         for candidate in 1000u32..30000 {
             if !already_allocated_ids.contains(&candidate) {
@@ -32,11 +32,11 @@ mod tests {
 
     fn check_allocate_id(
         already_allocated_ids: impl IntoIterator<Item = u32>,
-        is_normal_user: bool,
+        is_normal: bool,
         expected: u32,
     ) -> Result<()> {
         let uids = already_allocated_ids.into_iter().collect::<BTreeSet<u32>>();
-        let allocated = allocate_id(&uids, is_normal_user)?;
+        let allocated = allocate(&uids, is_normal)?;
         assert_eq!(allocated, expected);
         Ok(())
     }

@@ -8,7 +8,7 @@ use serde::Deserialize;
 pub struct User {
     /// Whether the user is a "normal" or a "system" user
     #[serde(default)]
-    pub is_normal_user: bool,
+    pub is_normal: bool,
     /// The name of the user
     pub name: String,
     /// The UID of the user
@@ -42,7 +42,7 @@ pub struct Password {
 pub struct Group {
     /// Whether the group is a "normal" or a "system" group
     #[serde(default)]
-    pub is_normal_group: bool,
+    pub is_normal: bool,
     /// The name of the group
     pub name: String,
     /// The GID of the users primary group
@@ -80,14 +80,14 @@ mod tests {
         let value = serde_json::json!({
             "users": [
                 {
-                    "isNormalUser": true,
+                    "isNormal": true,
                     "name": "normalo",
                     "home": "/home/normalo",
                     "shell": "/bin/bash",
                     "password": "insecure",
                 },
                 {
-                    "isNormalUser": false,
+                    "isNormal": false,
                     "name": "sysuser",
                     "home": "/home/sysuser",
                     "shell": "/bin/bash",

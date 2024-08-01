@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 use anyhow::{bail, Context, Result};
 use indexmap::IndexMap;
 
-use crate::{fs::atomic_write, id::allocate_id};
+use crate::{fs::atomic_write, id};
 
 /// Password for /etc/passwd indicating that the actual password is stored in /etc/shadow.
 const PASSWORD_IN_SHADOW: &str = "x";
@@ -154,7 +154,7 @@ impl Passwd {
                 uids.insert(e.uid);
                 entries.insert(e.name.clone(), e.clone());
             } else {
-                log::warn!("Skipping passwd line because it cannot be parsed: {line}.")
+                log::warn!("Skipping passwd line because it cannot be parsed: {line}.");
             }
         }
         Self { entries, uids }
@@ -168,7 +168,7 @@ impl Passwd {
         let mut s = String::new();
         for entry in self.entries.values() {
             s.push_str(&entry.to_line());
-            s.push('\n')
+            s.push('\n');
         }
         s
     }
@@ -180,7 +180,7 @@ impl Passwd {
     /// Insert a new entry.
     ///
     /// This will fail if a user with the UID or name already exists.
-    pub fn insert(&mut self, entry: Entry) -> Result<()> {
+    pub fn insert(&mut self, entry: &Entry) -> Result<()> {
         if self.uids.contains(&entry.uid) {
             bail!(
                 "User with UID {} already exists in passwd database",
@@ -203,8 +203,8 @@ impl Passwd {
     /// Allocate a new (i.e. unused) UID.
     ///
     /// Returns `Err` if it cannot allocate a new UID because all in the range are already used.
-    pub fn allocate_uid(&self, is_normal_user: bool) -> Result<u32> {
-        allocate_id(&self.uids, is_normal_user)
+    pub fn allocate_uid(&self, is_normal: bool) -> Result<u32> {
+        id::allocate(&self.uids, is_normal)
     }
 }
 
@@ -249,9 +249,9 @@ mod tests {
         let group = Passwd::from_buffer(buffer);
         let recreated_buffer = group.to_buffer();
 
-        let expected = expect![[r#"
+        let expected = expect![[r"
             nobody:x:65534:65534:Unprivileged account (don't use!):/var/empty:/run/current-system/sw/bin/nologin
-        "#]];
+        "]];
         expected.assert_eq(&recreated_buffer);
     }
 }

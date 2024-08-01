@@ -19,7 +19,7 @@ use shadow::Shadow;
 
 /// Path to the nologin binary.
 const NO_LOGIN: &str = "/run/current-system/sw/bin/nologin";
-const DFEAULT_DIRECTORY: &str = "/etc";
+const DEFAULT_DIRECTORY: &str = "/etc";
 
 fn main() -> ExitCode {
     // Setup the logger to use the kernel's `printk()` scheme so that systemd can interpret the
@@ -54,7 +54,7 @@ fn run() -> Result<()> {
     let config_path = std::env::args()
         .nth(1)
         .ok_or(anyhow!("No config provided"))?;
-    let directory = std::env::args().nth(2).unwrap_or(DFEAULT_DIRECTORY.into());
+    let directory = std::env::args().nth(2).unwrap_or(DEFAULT_DIRECTORY.into());
 
     let config = Config::from_file(config_path)?;
 
@@ -66,7 +66,7 @@ fn run() -> Result<()> {
     let mut passwd_db = Passwd::from_file(&passwd_path).unwrap_or_default();
     let mut shadow_db = Shadow::from_file(&shadow_path).unwrap_or_default();
 
-    update_users_and_groups(config, &mut group_db, &mut passwd_db, &mut shadow_db)?;
+    update_users_and_groups(&config, &mut group_db, &mut passwd_db, &mut shadow_db);
 
     warn_about_weak_password_hashes(&shadow_db);
 
@@ -84,11 +84,11 @@ fn run() -> Result<()> {
 ///
 /// Doesn't actually write anything to disk, only mutates the databases in memory.
 fn update_users_and_groups(
-    config: Config,
+    config: &Config,
     group_db: &mut Group,
     passwd_db: &mut Passwd,
     shadow_db: &mut Shadow,
-) -> Result<()> {
+) {
     for group_config in &config.groups {
         if let Some(existing_entry) = group_db.get_mut(&group_config.name) {
             existing_entry.update(group_config.members.clone());
@@ -118,11 +118,9 @@ fn update_users_and_groups(
                 "Locking account for user {} as the config doesn't specify this user...",
                 entry.name()
             );
-            entry.lock_account()
+            entry.lock_account();
         }
     }
-
-    Ok(())
 }
 
 /// Create a new group entry and add it to the database.
@@ -131,7 +129,7 @@ fn create_group(group_config: &config::Group, group_db: &mut Group) -> Result<()
         gid
     } else {
         group_db
-            .allocate_gid(group_config.is_normal_group)
+            .allocate_gid(group_config.is_normal)
             .context("Failed to allocate new GID")?
     };
 
@@ -140,7 +138,7 @@ fn create_group(group_config: &config::Group, group_db: &mut Group) -> Result<()
     let description = new_entry.describe();
 
     group_db
-        .insert(new_entry)
+        .insert(&new_entry)
         .with_context(|| format!("Failed to add group entry {}", group_config.name))?;
 
     log::info!("Created group {description}.");
@@ -163,7 +161,7 @@ fn create_user(
         uid
     } else {
         passwd_db
-            .allocate_uid(user_config.is_normal_user)
+            .allocate_uid(user_config.is_normal)
             .context("Failed to allocate new UID")?
     };
 
@@ -173,7 +171,7 @@ fn create_user(
         // No group was provided so create a new group with the same name of the user and re-use
         // the UID as GID.
         let group_config = config::Group {
-            is_normal_group: user_config.is_normal_user,
+            is_normal: user_config.is_normal,
             name: user_config.name.clone(),
             gid: Some(uid),
             members: vec![user_config.name.clone()],
@@ -195,7 +193,7 @@ fn create_user(
 
     let description = new_entry.describe();
 
-    passwd_db.insert(new_entry).with_context(|| {
+    passwd_db.insert(&new_entry).with_context(|| {
         format!(
             "Failed to add entry to passwd database for user {}",
             user_config.name
@@ -217,19 +215,17 @@ fn update_user(
 ) -> Result<()> {
     log::debug!("Updating passwd entry for {}...", user_config.name);
 
-    let gid = user_config
-        .group
-        .as_ref()
-        .and_then(|g| match resolve_group(g, group_db) {
-            Ok(gid) => Some(gid),
-            Err(_) => {
-                log::error!(
-                    "Group {g} doesn't exist. Not updating primary group of user {}.",
-                    user_config.name
-                );
-                None
-            }
-        });
+    let gid = user_config.group.as_ref().and_then(|g| {
+        if let Ok(gid) = resolve_group(g, group_db) {
+            Some(gid)
+        } else {
+            log::error!(
+                "Group {g} doesn't exist. Not updating primary group of user {}.",
+                user_config.name
+            );
+            None
+        }
+    });
 
     existing_entry.update(
         gid,
@@ -263,24 +259,23 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
         log::debug!("Updating shadow entry for {}...", user_config.name);
 
         let hashed_password =
-            HashedPassword::from_config(&user_config.password)?.and_then(|hashed_password| {
-                match hashed_password {
+            HashedPassword::from_config(&user_config.password, &user_config.name)?.and_then(
+                |hashed_password| match hashed_password {
                     HashedPassword::Override(s) => Some(s),
                     HashedPassword::Initial(_) => None,
-                }
-            });
+                },
+            );
 
         existing_entry.update(hashed_password, user_config.expiration_date.clone());
     } else {
         log::debug!("Creating shadow entry for {}...", user_config.name);
 
         let hashed_password =
-            HashedPassword::from_config(&user_config.password)?.map(|hashed_password| {
-                match hashed_password {
-                    HashedPassword::Override(s) => s,
-                    HashedPassword::Initial(s) => s,
-                }
-            });
+            HashedPassword::from_config(&user_config.password, &user_config.name)?.map(
+                |hashed_password| match hashed_password {
+                    HashedPassword::Override(s) | HashedPassword::Initial(s) => s,
+                },
+            );
 
         let new_entry = shadow::Entry::new(
             user_config.name.clone(),
@@ -288,7 +283,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
             user_config.expiration_date.clone(),
         );
 
-        shadow_db.insert(new_entry).with_context(|| {
+        shadow_db.insert(&new_entry).with_context(|| {
             format!(
                 "Failed to add entry to shadow database for user {}",
                 user_config.name
@@ -302,7 +297,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
 fn warn_about_weak_password_hashes(shadow_db: &Shadow) {
     for entry in shadow_db.entries() {
         if !entry.uses_secure_hash() {
-            log::warn!("User {} uses an insecure password hashing scheme. Update their password as soon as possible.", entry.name())
+            log::warn!("User {} uses an insecure password hashing scheme. Update their password as soon as possible.", entry.name());
         }
     }
 }
@@ -313,15 +308,8 @@ mod tests {
 
     use expect_test::expect;
 
-    #[test]
-    fn update_users_and_groups_across_generations() -> Result<()> {
-        let mut group_db = Group::default();
-        let mut passwd_db = Passwd::default();
-        let mut shadow_db = Shadow::default();
-
-        // GEN 0
-
-        let gen0: Config = serde_json::from_value(serde_json::json!({
+    fn gen0() -> Result<Config> {
+        Ok(serde_json::from_value(serde_json::json!({
             "users": [
                 {
                     "name": "root",
@@ -334,43 +322,25 @@ mod tests {
                     "members": [ "normalo", ],
                 },
             ],
-        }))?;
+        }))?)
+    }
 
-        update_users_and_groups(gen0, &mut group_db, &mut passwd_db, &mut shadow_db)?;
-
-        let expected_group = expect![[r#"
-            wheel:x:999:normalo
-            root:x:0:root
-        "#]];
-        expected_group.assert_eq(&group_db.to_buffer());
-
-        let expected_passwd = expect![[r#"
-            root:x:0:0:::/run/current-system/sw/bin/nologin
-        "#]];
-        expected_passwd.assert_eq(&passwd_db.to_buffer());
-
-        let expected_shadow = expect![[r#"
-            root:!*:1::::::
-        "#]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer());
-
-        // GEN 1
-
-        let gen1: Config = serde_json::from_value(serde_json::json!({
+    fn gen1() -> Result<Config> {
+        Ok(serde_json::from_value(serde_json::json!({
             "users": [
                 {
                     "name": "root",
                     "uid": 0,
                 },
                 {
-                    "isNormalUser": true,
+                    "isNormal": true,
                     "name": "normalo",
                     "home": "/home/normalo",
                     "shell": "/bin/bash",
                     "hashedPassword": "$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7",
                 },
                 {
-                    "isNormalUser": true,
+                    "isNormal": true,
                     "name": "initial",
                     "initialHashedPassword": "$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2",
                 },
@@ -381,35 +351,11 @@ mod tests {
                     "members": [ "normalo", "initial" ],
                 },
             ],
-        }))?;
+        }))?)
+    }
 
-        update_users_and_groups(gen1, &mut group_db, &mut passwd_db, &mut shadow_db)?;
-
-        let expected_group = expect![[r#"
-            wheel:x:999:normalo,initial
-            root:x:0:root
-            normalo:x:1000:normalo
-            initial:x:1001:initial
-        "#]];
-        expected_group.assert_eq(&group_db.to_buffer());
-
-        let expected_passwd = expect![[r#"
-            root:x:0:0:::/run/current-system/sw/bin/nologin
-            normalo:x:1000:1000::/home/normalo:/bin/bash
-            initial:x:1001:1001:::/run/current-system/sw/bin/nologin
-        "#]];
-        expected_passwd.assert_eq(&passwd_db.to_buffer());
-
-        let expected_shadow = expect![[r#"
-            root:!*:1::::::
-            normalo:$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7:1::::::
-            initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
-        "#]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer());
-
-        // GEN 2
-
-        let gen2: Config = serde_json::from_value(serde_json::json!({
+    fn gen2() -> Result<Config> {
+        Ok(serde_json::from_value(serde_json::json!({
             "users": [
                 {
                     "name": "root",
@@ -429,30 +375,85 @@ mod tests {
                 // initial user should still exist even thouhg we remove them from the config
             ],
             // wheel group should still exist even though we remove it from the config
-        }))?;
+        }))?)
+    }
 
-        update_users_and_groups(gen2, &mut group_db, &mut passwd_db, &mut shadow_db)?;
+    #[test]
+    fn update_users_and_groups_across_generations() -> Result<()> {
+        let mut group_db = Group::default();
+        let mut passwd_db = Passwd::default();
+        let mut shadow_db = Shadow::default();
 
-        let expected_group = expect![[r#"
+        // GEN 0
+
+        update_users_and_groups(&gen0()?, &mut group_db, &mut passwd_db, &mut shadow_db);
+
+        let expected_group = expect![[r"
+            wheel:x:999:normalo
+            root:x:0:root
+        "]];
+        expected_group.assert_eq(&group_db.to_buffer());
+
+        let expected_passwd = expect![[r"
+            root:x:0:0:::/run/current-system/sw/bin/nologin
+        "]];
+        expected_passwd.assert_eq(&passwd_db.to_buffer());
+
+        let expected_shadow = expect![[r"
+            root:!*:1::::::
+        "]];
+        expected_shadow.assert_eq(&shadow_db.to_buffer());
+
+        // GEN 1
+
+        update_users_and_groups(&gen1()?, &mut group_db, &mut passwd_db, &mut shadow_db);
+
+        let expected_group = expect![[r"
             wheel:x:999:normalo,initial
             root:x:0:root
             normalo:x:1000:normalo
             initial:x:1001:initial
-        "#]];
+        "]];
         expected_group.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r#"
+        let expected_passwd = expect![[r"
+            root:x:0:0:::/run/current-system/sw/bin/nologin
+            normalo:x:1000:1000::/home/normalo:/bin/bash
+            initial:x:1001:1001:::/run/current-system/sw/bin/nologin
+        "]];
+        expected_passwd.assert_eq(&passwd_db.to_buffer());
+
+        let expected_shadow = expect![[r"
+            root:!*:1::::::
+            normalo:$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7:1::::::
+            initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
+        "]];
+        expected_shadow.assert_eq(&shadow_db.to_buffer());
+
+        // GEN 2
+
+        update_users_and_groups(&gen2()?, &mut group_db, &mut passwd_db, &mut shadow_db);
+
+        let expected_group = expect![[r"
+            wheel:x:999:normalo,initial
+            root:x:0:root
+            normalo:x:1000:normalo
+            initial:x:1001:initial
+        "]];
+        expected_group.assert_eq(&group_db.to_buffer());
+
+        let expected_passwd = expect![[r"
             root:x:0:0::/root:/run/current-system/sw/bin/nologin
             normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/bash
             initial:x:1001:1001:::/run/current-system/sw/bin/nologin
-        "#]];
+        "]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r#"
+        let expected_shadow = expect![[r"
             root:!*:1::::::
             normalo:$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A:1::::::
             initial:!*:1::::::
-        "#]];
+        "]];
         expected_shadow.assert_eq(&shadow_db.to_buffer());
 
         Ok(())

@@ -132,7 +132,7 @@ impl Shadow {
             if let Some(e) = Entry::from_line(line) {
                 entries.insert(e.name.clone(), e.clone());
             } else {
-                log::warn!("Skipping shadow line because it cannot be parsed: {line}.")
+                log::warn!("Skipping shadow line because it cannot be parsed: {line}.");
             }
         }
         Self(entries)
@@ -146,7 +146,7 @@ impl Shadow {
         let mut s = String::new();
         for entry in self.0.values() {
             s.push_str(&entry.to_line());
-            s.push('\n')
+            s.push('\n');
         }
         s
     }
@@ -155,7 +155,7 @@ impl Shadow {
         self.0.get_mut(name)
     }
 
-    pub fn insert(&mut self, entry: Entry) -> Result<()> {
+    pub fn insert(&mut self, entry: &Entry) -> Result<()> {
         if self.0.contains_key(&entry.name) {
             bail!("User {} already exists in shadow database", entry.name);
         }
@@ -234,9 +234,9 @@ mod tests {
         let group = Shadow::from_buffer(buffer);
         let recreated_buffer = group.to_buffer();
 
-        let expected = expect![[r#"
+        let expected = expect![[r"
             root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::
-        "#]];
+        "]];
         expected.assert_eq(&recreated_buffer);
     }
 

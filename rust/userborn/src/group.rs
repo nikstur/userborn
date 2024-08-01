@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 use anyhow::{bail, Context, Result};
 use indexmap::IndexMap;
 
-use crate::{fs::atomic_write, id::allocate_id};
+use crate::{fs::atomic_write, id};
 
 #[derive(Clone)]
 pub struct Entry {
@@ -108,7 +108,7 @@ impl Group {
                 gids.insert(e.gid);
                 entries.insert(e.name.clone(), e.clone());
             } else {
-                log::warn!("Skipping group line because it cannot be parsed: {line}.")
+                log::warn!("Skipping group line because it cannot be parsed: {line}.");
             }
         }
         Self { entries, gids }
@@ -122,7 +122,7 @@ impl Group {
         let mut s = String::new();
         for entry in self.entries.values() {
             s.push_str(&entry.to_line());
-            s.push('\n')
+            s.push('\n');
         }
         s
     }
@@ -135,7 +135,7 @@ impl Group {
         self.entries.get_mut(name)
     }
 
-    pub fn insert(&mut self, entry: Entry) -> Result<()> {
+    pub fn insert(&mut self, entry: &Entry) -> Result<()> {
         if self.gids.contains(&entry.gid) {
             bail!(
                 "Group with GID {} already exists in group database",
@@ -159,7 +159,7 @@ impl Group {
     ///
     /// Returns `Err` if it cannot allocate a new GID because all in the range are already used.
     pub fn allocate_gid(&self, is_normal_group: bool) -> Result<u32> {
-        allocate_id(&self.gids, is_normal_group)
+        id::allocate(&self.gids, is_normal_group)
     }
 }
 
@@ -202,9 +202,9 @@ mod tests {
         let group = Group::from_buffer(buffer);
         let recreated_buffer = group.to_buffer();
 
-        let expected = expect![[r#"
+        let expected = expect![[r"
             wheel:x:1:peter
-        "#]];
+        "]];
         expected.assert_eq(&recreated_buffer);
     }
 }
