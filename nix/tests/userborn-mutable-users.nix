@@ -1,10 +1,12 @@
 { lib, ... }:
 
 let
-  rootPassword = "$y$j9T$p6OI0WN7.rSfZBOijjRdR.$xUOA2MTcB48ac.9Oc5fz8cxwLv1mMqabnn333iOzSA6";
-  updatedRootPassword = "$y$j9T$G0/cN658V3USk9E/J/rC1.$p4jFnkCPTOIiieAAHh5uYX4NebE2Cl6Bh5N1I3mLnNC";
-  normaloPassword = "hello";
-  newNormaloPassword = "$y$j9T$p6OI0WN7.rSfZBOijjRdR.$xUOA2MTcB48ac.9Oc5fz8cxwLv1mMqabnn333iOzSA6";
+  normaloHashedPassword = "$y$j9T$IEWqhKtWg.r.8fVkSEF56.$iKNxdMC6hOAQRp6eBtYvBk4c7BGpONXeZMqc8I/LM46";
+
+  common = {
+    imports = [ ./common/userborn.nix ];
+    users.mutableUsers = true;
+  };
 in
 
 {
@@ -13,40 +15,31 @@ in
 
   meta.maintainers = with lib.maintainers; [ nikstur ];
 
-  nodes.machine = { pkgs, ... }: {
-    services.userborn.enable = true;
-
-    # Prerequisites
-    system.etc.overlay.enable = true;
-    boot.initrd.systemd.enable = true;
-
-    # Read this password file at runtime from outside the Nix store.
-    environment.etc."rootpw.secret".text = rootPassword;
+  nodes.machine = { config, pkgs, ... }: {
+    imports = [ common ];
 
     users = {
       mutableUsers = true;
       users = {
-        # Override the empty root password set by the test instrumentation.
-        root.hashedPasswordFile = lib.mkForce "/etc/rootpw.secret";
-
         normalo = {
           isNormalUser = true;
-          initialPassword = normaloPassword;
+          hashedPassword = normaloHashedPassword;
         };
       };
     };
 
-    specialisation.new-generation.configuration = {
-      users.users = {
-        root = {
-          # Forcing this to null simulates removing the config value in a new
-          # generation.
-          hashedPasswordFile = lib.mkOverride 9 null;
-          hashedPassword = updatedRootPassword;
+    specialisation.new-generation = {
+      inheritParentConfig = false;
+      configuration = {
+        nixpkgs = {
+          inherit (config.nixpkgs) hostPlatform;
         };
-        new-normalo = {
-          isNormalUser = true;
-          initialHashedPassword = newNormaloPassword;
+        imports = [ common ];
+
+        users.users = {
+          new-normalo = {
+            isNormalUser = true;
+          };
         };
       };
     };
@@ -55,30 +48,27 @@ in
   testScript = ''
     machine.wait_for_unit("userborn.service")
 
-    with subtest("Correct mode on the password files"):
-      assert machine.succeed("stat -c '%a' /etc/passwd") == "644\n"
-      assert machine.succeed("stat -c '%a' /etc/group") == "644\n"
-      assert machine.succeed("stat -c '%a' /etc/shadow") == "0\n"
-
-    with subtest("root user has correct password"):
-      print(machine.succeed("getent passwd root"))
-      assert "${rootPassword}" in machine.succeed("getent shadow root"), "root user password is not correct"
-
     with subtest("normalo user is created"):
-      print(machine.succeed("getent passwd normalo"))
-      assert machine.succeed("stat -c '%U' /home/normalo") == "normalo\n"
+      assert 1000 == int(machine.succeed("id --user normalo")), "normalo user doesn't have UID 1000"
+      assert "${normaloHashedPassword}" in machine.succeed("getent shadow normalo"), "normalo user password is not correct"
+
+    with subtest("Add new user manually"):
+      machine.succeed("useradd manual-normalo")
+      assert 1001 == int(machine.succeed("id --user manual-normalo")), "manual-normalo user doesn't have UID 1001"
+
+    with subtest("Delete manual--normalo user manually"):
+      machine.succeed("userdel manual-normalo")
 
 
     machine.succeed("/run/current-system/specialisation/new-generation/bin/switch-to-configuration switch")
 
 
-    with subtest("root user password is updated"):
-      print(machine.succeed("getent passwd root"))
-      assert "${updatedRootPassword}" in machine.succeed("getent shadow root"), "root user password is not updated"
+    with subtest("normalo user is disabled"):
+      print(machine.succeed("getent shadow normalo"))
+      assert "!*" in machine.succeed("getent shadow normalo"), "normalo user is not disabled"
 
     with subtest("new-normalo user is created after switching to new generation"):
       print(machine.succeed("getent passwd new-normalo"))
-      assert machine.succeed("stat -c '%U' /home/new-normalo") == "new-normalo\n"
-      assert "${newNormaloPassword}" in machine.succeed("getent shadow new-normalo"), "new-normalo user password is not correct"
+      assert 1001 == int(machine.succeed("id --user new-normalo")), "new-normalo user doesn't have UID 1001"
   '';
 }

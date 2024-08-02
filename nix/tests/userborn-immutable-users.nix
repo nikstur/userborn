@@ -1,9 +1,12 @@
 { lib, ... }:
 
 let
-  rootPassword = "$y$j9T$p6OI0WN7.rSfZBOijjRdR.$xUOA2MTcB48ac.9Oc5fz8cxwLv1mMqabnn333iOzSA6";
-  sysuserPassword = "$y$j9T$3aiOV/8CADAK22OK2QT3/0$67OKd50Z4qTaZ8c/eRWHLIM.o3ujtC1.n9ysmJfv639";
-  newSysuserPassword = "mellow";
+  normaloHashedPassword = "$y$j9T$IEWqhKtWg.r.8fVkSEF56.$iKNxdMC6hOAQRp6eBtYvBk4c7BGpONXeZMqc8I/LM46";
+
+  common = {
+    imports = [ ./common/userborn.nix ];
+    users.mutableUsers = false;
+  };
 in
 
 {
@@ -12,60 +15,59 @@ in
 
   meta.maintainers = with lib.maintainers; [ nikstur ];
 
-  nodes.machine = {
-    services.userborn.enable = true;
-
-    # Prerequisites
-    system.etc.overlay.enable = true;
-    boot.initrd.systemd.enable = true;
-
-    # Read this password file at runtime from outside the Nix store.
-    environment.etc."rootpw.secret".text = rootPassword;
+  nodes.machine = { config, pkgs, ... }: {
+    imports = [ common ];
 
     users = {
-      mutableUsers = false;
       users = {
-        # Override the empty root password set by the test instrumentation.
-        root.hashedPasswordFile = lib.mkForce "/etc/rootpw.secret";
-
-        sysuser = {
-          isSystemUser = true;
-          group = "wheel";
-          home = "/sysuser";
-          initialHashedPassword = sysuserPassword;
+        normalo = {
+          isNormalUser = true;
+          hashedPassword = normaloHashedPassword;
         };
       };
     };
 
-    specialisation.new-generation.configuration = {
-      users.users.new-sysuser = {
-        isSystemUser = true;
-        group = "wheel";
-        home = "/new-sysuser";
-        initialPassword = newSysuserPassword;
+    specialisation.new-generation = {
+      inheritParentConfig = false;
+      configuration = {
+        nixpkgs = {
+          inherit (config.nixpkgs) hostPlatform;
+        };
+        imports = [ common ];
+
+        users.users = {
+          new-normalo = {
+            isNormalUser = true;
+          };
+        };
       };
     };
   };
 
   testScript = ''
-    with subtest("root user has correct password"):
-      print(machine.succeed("getent passwd root"))
-      assert "${rootPassword}" in machine.succeed("getent shadow root"), "root user password is not correct"
+    machine.wait_for_unit("userborn.service")
 
-    with subtest("sysuser user is created"):
-      print(machine.succeed("getent passwd sysuser"))
-      assert machine.succeed("stat -c '%U' /sysuser") == "sysuser\n"
-      assert "${sysuserPassword}" in machine.succeed("getent shadow sysuser"), "sysuser user password is not correct"
+    with subtest("normalo user is created"):
+      assert "${normaloHashedPassword}" in machine.succeed("getent shadow normalo"), "normalo user password is not correct"
 
     with subtest("Fail to add new user manually"):
-      machine.fail("useradd manual-sysuser")
+      machine.fail("useradd manual-normalo")
+
+    with subtest("Fail to add delete user manually"):
+      machine.fail("userdel normalo")
 
 
     machine.succeed("/run/current-system/specialisation/new-generation/bin/switch-to-configuration switch")
 
 
-    with subtest("new-sysuser user is created after switching to new generation"):
-      print(machine.succeed("getent passwd new-sysuser"))
-      assert machine.succeed("stat -c '%U' /new-sysuser") == "new-sysuser\n"
+    with subtest("normalo user is disabled"):
+      print(machine.succeed("getent shadow normalo"))
+      assert "!*" in machine.succeed("getent shadow normalo"), "normalo user is not disabled"
+
+    with subtest("new-normalo user is created after switching to new generation"):
+      print(machine.succeed("getent passwd new-normalo"))
+
+    with subtest("Still fail to add new user manually"):
+      machine.fail("useradd again-normalo")
   '';
 }

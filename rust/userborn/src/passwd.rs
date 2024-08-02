@@ -182,10 +182,7 @@ impl Passwd {
     /// This will fail if a user with the UID or name already exists.
     pub fn insert(&mut self, entry: &Entry) -> Result<()> {
         if self.uids.contains(&entry.uid) {
-            bail!(
-                "User with UID {} already exists in passwd database",
-                entry.uid
-            );
+            bail!("User with UID {} already exists", entry.uid);
         }
 
         if self.entries.contains_key(&entry.name) {

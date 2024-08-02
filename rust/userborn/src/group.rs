@@ -137,14 +137,11 @@ impl Group {
 
     pub fn insert(&mut self, entry: &Entry) -> Result<()> {
         if self.gids.contains(&entry.gid) {
-            bail!(
-                "Group with GID {} already exists in group database",
-                entry.gid
-            );
+            bail!("Group with GID {} already exists", entry.gid);
         }
 
         if self.entries.contains_key(&entry.name) {
-            bail!("Group {} already exists in group database", entry.name);
+            bail!("Group {} already exists", entry.name);
         }
 
         self.entries
@@ -160,6 +157,10 @@ impl Group {
     /// Returns `Err` if it cannot allocate a new GID because all in the range are already used.
     pub fn allocate_gid(&self, is_normal_group: bool) -> Result<u32> {
         id::allocate(&self.gids, is_normal_group)
+    }
+
+    pub fn contains_gid(&self, gid: u32) -> bool {
+        self.gids.contains(&gid)
     }
 }
 

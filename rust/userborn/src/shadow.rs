@@ -26,11 +26,7 @@ pub struct Entry {
 
 impl Entry {
     /// Create a new /etc/shadow entry.
-    pub fn new(
-        name: String,
-        hashed_password: Option<String>,
-        account_expiration_date: Option<String>,
-    ) -> Self {
+    pub fn new(name: String, hashed_password: Option<String>) -> Self {
         Self {
             name,
             password: hashed_password.unwrap_or(PASSWORD_LOCKED_AND_INVALID.into()),
@@ -39,27 +35,17 @@ impl Entry {
             maximum_password_age: String::new(),
             password_warning_period: String::new(),
             password_inactivity_period: String::new(),
-            account_expiration_date: account_expiration_date.unwrap_or_default(),
+            account_expiration_date: String::new(),
             reserved: String::new(),
         }
     }
 
     /// Update an /etc/shadow entry.
-    pub fn update(&mut self, password: Option<String>, account_expiration_date: Option<String>) {
+    pub fn update(&mut self, password: Option<String>) {
         if let Some(password) = password {
             if self.password != password {
                 log::info!("Updating password of user {}...", self.name,);
                 self.password = password;
-            };
-        };
-        if let Some(account_expiration_date) = account_expiration_date {
-            if self.account_expiration_date != account_expiration_date {
-                log::info!(
-                    "Updating expiration date of user {} from {} to {account_expiration_date}...",
-                    self.name,
-                    self.account_expiration_date,
-                );
-                self.account_expiration_date = account_expiration_date;
             };
         };
     }
@@ -189,7 +175,10 @@ impl Default for Shadow {
 /// - yescrypt ("y")
 /// - gost-yescrypt ("gy")
 /// - scrypt ("7")
-/// - bcrypt ("2b"
+/// - bcrypt ("2b")
+///
+/// If the passed `password` is not a result of crypt(3), i.e. doens't start with `$`, it is deemed
+/// "secure".
 fn password_hash_is_secure(password: &str) -> bool {
     // If it's not a hashed password, it is secure.
     if !password.starts_with('$') {

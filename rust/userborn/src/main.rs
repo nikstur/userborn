@@ -72,7 +72,7 @@ fn run() -> Result<()> {
 
     log::debug!("Persisting files to disk...");
     // We should skip this if the files haven't actually changed
-    // We should also create backup files with an `-` appended to the file name.
+    // We should create backup files with an `-` appended to the file name.
     group_db.to_file(group_path)?;
     passwd_db.to_file(passwd_path)?;
     shadow_db.to_file(shadow_path)?;
@@ -114,10 +114,7 @@ fn update_users_and_groups(
     // Find users in the shadow DB that are not in the config and disable them.
     for entry in shadow_db.entries_mut() {
         if !users_in_config.contains(entry.name()) {
-            log::info!(
-                "Locking account for user {} as the config doesn't specify this user...",
-                entry.name()
-            );
+            log::info!("Locking account for user {}...", entry.name());
             entry.lock_account();
         }
     }
@@ -168,12 +165,19 @@ fn create_user(
     let gid = if let Some(ref primary_group) = user_config.group {
         resolve_group(primary_group, group_db)?
     } else {
+        // If we cannot re-use the UID as GID (because it's already used), allocate a new GID.
+        let gid = if group_db.contains_gid(uid) {
+            None
+        } else {
+            Some(uid)
+        };
+
         // No group was provided so create a new group with the same name of the user and re-use
         // the UID as GID.
         let group_config = config::Group {
             is_normal: user_config.is_normal,
             name: user_config.name.clone(),
-            gid: Some(uid),
+            gid,
             members: vec![user_config.name.clone()],
         };
 
@@ -266,7 +270,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
                 },
             );
 
-        existing_entry.update(hashed_password, user_config.expiration_date.clone());
+        existing_entry.update(hashed_password);
     } else {
         log::debug!("Creating shadow entry for {}...", user_config.name);
 
@@ -277,11 +281,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
                 },
             );
 
-        let new_entry = shadow::Entry::new(
-            user_config.name.clone(),
-            hashed_password,
-            user_config.expiration_date.clone(),
-        );
+        let new_entry = shadow::Entry::new(user_config.name.clone(), hashed_password);
 
         shadow_db.insert(&new_entry).with_context(|| {
             format!(
@@ -340,7 +340,7 @@ mod tests {
                     "hashedPassword": "$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7",
                 },
                 {
-                    "isNormal": true,
+                    "isNormal": false,
                     "name": "initial",
                     "initialHashedPassword": "$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2",
                 },
@@ -372,7 +372,7 @@ mod tests {
                     // This should change the password
                     "hashedPassword": "$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A",
                 },
-                // initial user should still exist even thouhg we remove them from the config
+                // initial user should still exist even though we remove them from the config
             ],
             // wheel group should still exist even though we remove it from the config
         }))?)
@@ -408,19 +408,19 @@ mod tests {
 
         update_users_and_groups(&gen1()?, &mut group_db, &mut passwd_db, &mut shadow_db);
 
-        let expected_group = expect![[r"
+        let expected_group = expect![[r#"
             wheel:x:999:normalo,initial
             root:x:0:root
             normalo:x:1000:normalo
-            initial:x:1001:initial
-        "]];
+            initial:x:998:initial
+        "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r"
+        let expected_passwd = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
             normalo:x:1000:1000::/home/normalo:/bin/bash
-            initial:x:1001:1001:::/run/current-system/sw/bin/nologin
-        "]];
+            initial:x:999:999:::/run/current-system/sw/bin/nologin
+        "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
         let expected_shadow = expect![[r"
@@ -434,19 +434,19 @@ mod tests {
 
         update_users_and_groups(&gen2()?, &mut group_db, &mut passwd_db, &mut shadow_db);
 
-        let expected_group = expect![[r"
+        let expected_group = expect![[r#"
             wheel:x:999:normalo,initial
             root:x:0:root
             normalo:x:1000:normalo
-            initial:x:1001:initial
-        "]];
+            initial:x:998:initial
+        "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r"
+        let expected_passwd = expect![[r#"
             root:x:0:0::/root:/run/current-system/sw/bin/nologin
             normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/bash
-            initial:x:1001:1001:::/run/current-system/sw/bin/nologin
-        "]];
+            initial:x:999:999:::/run/current-system/sw/bin/nologin
+        "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
         let expected_shadow = expect![[r"

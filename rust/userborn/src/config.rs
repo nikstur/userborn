@@ -23,7 +23,6 @@ pub struct User {
     pub home: Option<String>,
     /// The shell of the user
     pub shell: Option<String>,
-    pub expiration_date: Option<String>,
     #[serde(flatten)]
     pub password: Password,
 }

@@ -10,7 +10,7 @@ let
   };
 in
 {
-  # Lanzaboote
+  userborn = runTest ./userborn.nix;
   userborn-mutable-users = runTest ./userborn-mutable-users.nix;
   userborn-immutable-users = runTest ./userborn-immutable-users.nix;
 }

@@ -19,7 +19,6 @@ let
     users = lib.mapAttrsToList
       (username: opts: {
         inherit (opts)
-          isNormalUser
           name
           uid
           group
@@ -31,6 +30,7 @@ let
           initialPassword
           initialHashedPassword
           ;
+        isNormal = opts.isNormalUser;
         shell = utils.toShellPath opts.shell;
       })
       config.users.users;
@@ -40,9 +40,7 @@ let
   userbornConfigJson = pkgs.writeText "userborn.json" (builtins.toJSON userbornConfig);
 
   immutableEtc = config.system.etc.overlay.enable && !config.system.etc.overlay.mutable;
-  # The location of the password files when using an immutable /etc.
-  immutablePasswordFilesLocation = "/var/lib/nixos";
-  passwordFilesLocation = if immutableEtc then immutablePasswordFilesLocation else "/etc";
+  passwordFilesLocation = if immutableEtc then cfg.immutablePasswordFilesLocation else "/etc";
   # The filenames created by userborn.
   passwordFiles = [ "group" "passwd" "shadow" ];
 
@@ -60,6 +58,12 @@ in
       description = "The userborn package";
     };
 
+    immutablePasswordFilesLocation = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/nixos";
+      description = "The location of the original password files when using an immutable /etc";
+    };
+
   };
 
   config = lib.mkIf cfg.enable {
@@ -68,6 +72,10 @@ in
       {
         assertion = config.system.activationScripts.users == "";
         message = "system.activationScripts.users has to be empty to use userborn";
+      }
+      {
+        assertion = config.system.etc.overlay.enable;
+        message = "services.userborn.enable requires config.system.etc.overlay.enable";
       }
     ];
 
@@ -133,7 +141,7 @@ in
     # runtime!
     environment.etc = lib.mkIf immutableEtc (lib.listToAttrs (lib.map
       (file: lib.nameValuePair file {
-        source = "${immutablePasswordFilesLocation}/${file}";
+        source = "${cfg.immutablePasswordFilesLocation}/${file}";
         mode = "direct-symlink";
       })
       passwordFiles));
