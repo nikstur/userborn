@@ -4,9 +4,9 @@ Declaratively bear (manage) Linux users and groups.
 
 ## Features
 
-- Can create system (UID < 1000) and normal (UID > 1000) users.
+- Create system (UID < 1000) and normal (UID >= 1000) users.
 - Update user (password, description (gecos), home directory,
-  shell) and group (members) information and group (members) information..
+  shell) and group (members) information.
 - Prohibit UID/GID re-use.
 - Simple JSON config format.
 - Create per-user groups if no explicit primary group is provided.
@@ -20,8 +20,7 @@ will run on any Linux.
 
 ## Getting Started
 
-To enable Userborn, you need to import the flake into your system and enable
-the service:
+To enable Userborn you need to import the module and enable the service:
 
 ```nix
 services.userborn.enable = true;
@@ -112,7 +111,7 @@ Limitations:
 - When you provide a plaintext password in the config (which you really
   shouldn't!), the hashed password is updated each time userborn runs. This can
   be fixed in the future by calling `crypt()` directly (and re-using the
-  previois salt) instead of running `mkpasswd` in a subprocess. However, the
+  previos salt) instead of running `mkpasswd` in a subprocess. However, the
   security gains of this would be 0 (because the password is already available
   in plaintext!) and it will only suppress a single log line.
 - Userborn can handle comments in the password database files but it will
@@ -133,20 +132,22 @@ Userborn has two key differences from systemd-sysusers:
    systemd world, "normal" users wouldn't have an entry in
    `/etc/{group,passwd,shadow}`. Userborn, however affords them one of these
    entries, not because the systemd way is wrong or bad but because this way is
-   easier and fully backwords compatible.
+   easier and fully backwards compatible.
 2. Takes full ownership of the password database and thus also (destructively)
    changes user entries. For example, it can change passwords, home
    directories, default shell, etc. Please see the [Idempotence
-   section](#Idempotence) for details of what Userborn can change at what it
+   section](#Idempotence) for details of what Userborn can change and what it
    will never change.
 
 ### NixOS `update-users-groups.pl`
+
+Userborn:
 
 1. Doesn't use perl.
 2. Runs as a systemd service, not as an activation script.
 3. Doesn't rely on a hidden database to track state over the lifetime of a
    system.
-4. Supports an immutable (i.e. read-only) /etc.
+4. Supports mounting `/etc` via an (immutable, read-only) overlay.
 
 ### Limitations
 
