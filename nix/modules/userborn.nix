@@ -73,10 +73,6 @@ in
         assertion = config.system.activationScripts.users == "";
         message = "system.activationScripts.users has to be empty to use userborn";
       }
-      {
-        assertion = config.system.etc.overlay.enable;
-        message = "services.userborn.enable requires config.system.etc.overlay.enable";
-      }
     ];
 
     system.activationScripts.users = lib.mkForce "";
