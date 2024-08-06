@@ -7,43 +7,45 @@ let
     imports = [ ./common/userborn.nix ];
     users.mutableUsers = true;
   };
-in
 
+in
 {
 
   name = "userborn-mutable-users";
 
   meta.maintainers = with lib.maintainers; [ nikstur ];
 
-  nodes.machine = { config, pkgs, ... }: {
-    imports = [ common ];
+  nodes.machine =
+    { config, pkgs, ... }:
+    {
+      imports = [ common ];
 
-    users = {
-      mutableUsers = true;
       users = {
-        normalo = {
-          isNormalUser = true;
-          hashedPassword = normaloHashedPassword;
+        mutableUsers = true;
+        users = {
+          normalo = {
+            isNormalUser = true;
+            hashedPassword = normaloHashedPassword;
+          };
         };
       };
-    };
 
-    specialisation.new-generation = {
-      inheritParentConfig = false;
-      configuration = {
-        nixpkgs = {
-          inherit (config.nixpkgs) hostPlatform;
-        };
-        imports = [ common ];
+      specialisation.new-generation = {
+        inheritParentConfig = false;
+        configuration = {
+          nixpkgs = {
+            inherit (config.nixpkgs) hostPlatform;
+          };
+          imports = [ common ];
 
-        users.users = {
-          new-normalo = {
-            isNormalUser = true;
+          users.users = {
+            new-normalo = {
+              isNormalUser = true;
+            };
           };
         };
       };
     };
-  };
 
   testScript = ''
     machine.wait_for_unit("userborn.service")

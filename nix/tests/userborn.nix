@@ -12,67 +12,69 @@ let
   updatedSysuserInitialHashedPassword = "$y$j9T$kUBVhgOdSjymSfwfRVja70$eqCwWzVsz0fI0Uc6JsdD2CYMCpfJcErqnIqva2JCi1D";
 
   newNormaloHashedPassword = "$y$j9T$UFBMWbGjjVola0YE9YCcV/$jRSi5S6lzkcifbuqjMcyXLTwgOGm9BTQk/G/jYaxroC";
-in
 
+in
 {
 
   name = "userborn";
 
   meta.maintainers = with lib.maintainers; [ nikstur ];
 
-  nodes.machine = { pkgs, ... }: {
-    imports = [ ./common/userborn.nix ];
+  nodes.machine =
+    { pkgs, ... }:
+    {
+      imports = [ ./common/userborn.nix ];
 
-    # Read this password file at runtime from outside the Nix store.
-    environment.etc."rootpw.secret".text = rootHashedPasswordFile;
+      # Read this password file at runtime from outside the Nix store.
+      environment.etc."rootpw.secret".text = rootHashedPasswordFile;
 
-    users = {
-      users = {
-        root = {
-          # Override the empty root password set by the test instrumentation.
-          hashedPasswordFile = lib.mkForce "/etc/rootpw.secret";
-        };
-        normalo = {
-          isNormalUser = true;
-          password = normaloPassword;
-        };
-        sysuser = {
-          isSystemUser = true;
-          group = "sysusers";
-          initialHashedPassword = sysuserInitialHashedPassword;
-        };
-      };
-      groups = {
-        sysusers = { };
-      };
-    };
-
-    specialisation.new-generation.configuration = {
       users = {
         users = {
           root = {
-            # Forcing this to null simulates removing the config value in a new
-            # generation.
-            hashedPasswordFile = lib.mkOverride 9 null;
-            hashedPassword = updatedRootHashedPassword;
+            # Override the empty root password set by the test instrumentation.
+            hashedPasswordFile = lib.mkForce "/etc/rootpw.secret";
           };
           normalo = {
-            hashedPassword = updatedNormaloHashedPassword;
+            isNormalUser = true;
+            password = normaloPassword;
           };
           sysuser = {
-            initialHashedPassword = lib.mkForce updatedSysuserInitialHashedPassword;
-          };
-          new-normalo = {
-            isNormalUser = true;
-            hashedPassword = newNormaloHashedPassword;
+            isSystemUser = true;
+            group = "sysusers";
+            initialHashedPassword = sysuserInitialHashedPassword;
           };
         };
         groups = {
-          new-group = { };
+          sysusers = { };
+        };
+      };
+
+      specialisation.new-generation.configuration = {
+        users = {
+          users = {
+            root = {
+              # Forcing this to null simulates removing the config value in a new
+              # generation.
+              hashedPasswordFile = lib.mkOverride 9 null;
+              hashedPassword = updatedRootHashedPassword;
+            };
+            normalo = {
+              hashedPassword = updatedNormaloHashedPassword;
+            };
+            sysuser = {
+              initialHashedPassword = lib.mkForce updatedSysuserInitialHashedPassword;
+            };
+            new-normalo = {
+              isNormalUser = true;
+              hashedPassword = newNormaloHashedPassword;
+            };
+          };
+          groups = {
+            new-group = { };
+          };
         };
       };
     };
-  };
 
   testScript = ''
     machine.wait_for_unit("userborn.service")
