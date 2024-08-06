@@ -118,11 +118,19 @@ in
           # into /etc.
           ExecStart = "${cfg.package}/bin/userborn ${userbornConfigJson} ${passwordFilesLocation}";
 
-          # Make the source files writable before executing userborn.
-          ExecStartPre = lib.mkIf (!userCfg.mutableUsers)
-            (lib.map
-              (file: "-${pkgs.util-linux}/bin/umount ${passwordFilesLocation}/${file}")
-              passwordFiles);
+          ExecStartPre = lib.mkMerge [
+            (lib.mkIf (!config.system.etc.overlay.mutable)
+              [ "${pkgs.coreutils}/bin/mkdir -p ${passwordFilesLocation}" ]
+            )
+
+            # Make the source files writable before executing userborn.
+            (lib.mkIf (!userCfg.mutableUsers)
+              (lib.map
+                (file: "-${pkgs.util-linux}/bin/umount ${passwordFilesLocation}/${file}")
+                passwordFiles)
+            )
+          ];
+
           # Make the source files read-only after userborn has finished.
           ExecStartPost = lib.mkIf (!userCfg.mutableUsers)
             (lib.map
