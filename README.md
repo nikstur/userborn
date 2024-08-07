@@ -2,6 +2,8 @@
 
 Declaratively bear (manage) Linux users and groups.
 
+Upstream status: https://github.com/NixOS/nixpkgs/pull/332719
+
 ## Features
 
 - Create system (UID < 1000) and normal (UID >= 1000) users.
