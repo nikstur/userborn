@@ -22,6 +22,8 @@ pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32)
 
     file.write_all(buffer.as_ref())
         .with_context(|| format!("Failed to write to {tmp_path:?}"))?;
+    file.sync_all()
+        .with_context(|| format!("Failed to sync the temporary file {tmp_path:?}"))?;
 
     fs::rename(&tmp_path, &path)
         .with_context(|| format!("Failed to rename {tmp_path:?} to {:?}", path.as_ref()))?;
