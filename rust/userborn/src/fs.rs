@@ -9,16 +9,28 @@ use anyhow::{Context, Result};
 ///
 /// This increases the atomicity of the write.
 pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32) -> Result<()> {
-    let mut tmp_path = path.as_ref().as_os_str().to_os_string();
-    tmp_path.push(".tmp");
+    let mut i = 0;
 
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(&tmp_path)
-        .with_context(|| format!("Failed to open {tmp_path:?}"))?;
+    let (mut file, tmp_path) = loop {
+        let mut tmp_path = path.as_ref().as_os_str().to_os_string();
+        tmp_path.push(format!(".tmp{i}"));
+
+        let res = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .truncate(true)
+            .mode(mode)
+            .open(&tmp_path);
+        match res {
+            Ok(file) => break (file, tmp_path),
+            Err(err) => {
+                if err.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(err).context(format!("Failed to open temporary file {tmp_path:?}"));
+                }
+            }
+        }
+        i += 1;
+    };
 
     file.write_all(buffer.as_ref())
         .with_context(|| format!("Failed to write to {tmp_path:?}"))?;
