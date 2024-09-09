@@ -2,8 +2,6 @@
 
 Declaratively bear (manage) Linux users and groups.
 
-Upstream status: https://github.com/NixOS/nixpkgs/pull/332719
-
 ## Features
 
 - Create system (UID < 1000) and normal (UID >= 1000) users.
@@ -22,72 +20,12 @@ will run on any Linux.
 
 ## Getting Started
 
-To enable Userborn you need to import the module and enable the service:
+### NixOS
+
+Userborn is available in Nixpkgs (nixos-unstable). To enable it:
 
 ```nix
 services.userborn.enable = true;
-```
-
-### Flakes
-
-```nix
-# file: flake.nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    userborn = {
-      url = "github:nikstur/userborn";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
-
-  outputs = { self, nixpkgs, userborn, ...}: {
-    nixosConfigurations = {
-      yourHost = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-
-        modules = [
-          # This is not a complete NixOS configuration and you need to reference
-          # your normal configuration here.
-
-          userborn.nixosModules.userborn
-
-          ({ ... }: {
-            services.userborn.enable = true;
-          })
-        ];
-      };
-    };
-  };
-}
-```
-
-
-### Niv
-
-```console
-$ niv add nikstur/userborn
-Adding package userborn
-  Writing new sources file
-Done: Adding package userborn
-```
-
-```nix
-# file: configuration.nix
-{ ... }:
-let
-    sources = import ./nix/sources.nix;
-    lanzaboote = import sources.lanzaboote;
-in
-{
-  # This is not a complete NixOS configuration and you need to reference
-  # your normal configuration here.
-
-  imports = [ lanzaboote.nixosModules.lanzaboote ];
-
-  services.userborn.enable = true;
-}
 ```
 
 ### Idempotence
