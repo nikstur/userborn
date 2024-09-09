@@ -1,7 +1,10 @@
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use anyhow::{bail, Context, Result};
-use indexmap::IndexMap;
 
 use crate::{fs::atomic_write, id};
 
@@ -129,13 +132,18 @@ impl Entry {
     pub fn describe(&self) -> String {
         format!("{} with UID {}", self.name, self.uid)
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
+#[derive(Default)]
 pub struct Passwd {
-    /// Entries of /etc/passwd keyed by user name.
-    entries: IndexMap<String, Entry>,
-    /// Already allocated UIDs.
-    uids: BTreeSet<u32>,
+    /// Entries of /etc/passwd keyed by UID.
+    entries: BTreeMap<u32, Entry>,
+    /// Mapping of names to UIDs.
+    uids: BTreeMap<String, u32>,
 }
 
 impl Passwd {
@@ -146,13 +154,13 @@ impl Passwd {
         Ok(Self::from_buffer(&file))
     }
 
-    fn from_buffer(s: &str) -> Self {
-        let mut entries = IndexMap::new();
-        let mut uids = BTreeSet::new();
+    pub fn from_buffer(s: &str) -> Self {
+        let mut entries = BTreeMap::new();
+        let mut uids = BTreeMap::new();
         for line in s.lines() {
             if let Some(e) = Entry::from_line(line) {
-                uids.insert(e.uid);
-                entries.insert(e.name.clone(), e.clone());
+                entries.insert(e.uid, e.clone());
+                uids.insert(e.name.clone(), e.uid);
             } else {
                 log::warn!("Skipping passwd line because it cannot be parsed: {line}.");
             }
@@ -174,25 +182,24 @@ impl Passwd {
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Entry> {
-        self.entries.get_mut(name)
+        let uid = self.uids.get(name);
+        uid.and_then(|uid| self.entries.get_mut(uid))
     }
 
     /// Insert a new entry.
     ///
     /// This will fail if a user with the UID or name already exists.
     pub fn insert(&mut self, entry: &Entry) -> Result<()> {
-        if self.uids.contains(&entry.uid) {
+        if self.entries.contains_key(&entry.uid) {
             bail!("User with UID {} already exists", entry.uid);
         }
 
-        if self.entries.contains_key(&entry.name) {
-            bail!("User {} already exists in passwd database", entry.name);
+        if self.uids.contains_key(&entry.name) {
+            bail!("User {} already exists", entry.name);
         }
 
-        self.entries
-            .entry(entry.name.clone())
-            .or_insert(entry.clone());
-        self.uids.insert(entry.uid);
+        self.entries.entry(entry.uid).or_insert(entry.clone());
+        self.uids.insert(entry.name.clone(), entry.uid);
 
         Ok(())
     }
@@ -201,16 +208,12 @@ impl Passwd {
     ///
     /// Returns `Err` if it cannot allocate a new UID because all in the range are already used.
     pub fn allocate_uid(&self, is_normal: bool) -> Result<u32> {
-        id::allocate(&self.uids, is_normal)
+        let allocated_uids = self.entries.keys().copied().collect::<BTreeSet<u32>>();
+        id::allocate(&allocated_uids, is_normal)
     }
-}
 
-impl Default for Passwd {
-    fn default() -> Self {
-        Self {
-            entries: IndexMap::new(),
-            uids: BTreeSet::new(),
-        }
+    pub fn entries(&self) -> Vec<&Entry> {
+        self.entries.values().collect()
     }
 }
 
@@ -222,7 +225,7 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn read_and_write_back() {
+    fn sort() {
         let buffer = indoc! {"
             fwupd-refresh:x:999:999::/var/empty:/run/current-system/sw/bin/nologin
             root:x:0:0:System administrator:/root:/run/current-system/sw/bin/bash
@@ -230,10 +233,17 @@ mod tests {
             gary:x:1000:1000:Gary ,,,:/home/gary:/bin/bash
             messagebus:x:4:4:D-Bus system message bus daemon user:/run/dbus:/run/current-system/sw/bin/nologin
         "};
-
         let passwd = Passwd::from_buffer(buffer);
         let recreated_buffer = passwd.to_buffer();
-        assert_eq!(buffer, recreated_buffer);
+
+        let expected = expect![[r#"
+            root:x:0:0:System administrator:/root:/run/current-system/sw/bin/bash
+            messagebus:x:4:4:D-Bus system message bus daemon user:/run/dbus:/run/current-system/sw/bin/nologin
+            fwupd-refresh:x:999:999::/var/empty:/run/current-system/sw/bin/nologin
+            gary:x:1000:1000:Gary ,,,:/home/gary:/bin/bash
+            nobody:x:65534:65534:Unprivileged account (don't use!):/var/empty:/run/current-system/sw/bin/nologin
+        "#]];
+        expected.assert_eq(&recreated_buffer);
     }
 
     #[test]
