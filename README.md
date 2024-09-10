@@ -28,7 +28,7 @@ Userborn is available in Nixpkgs (nixos-unstable). To enable it:
 services.userborn.enable = true;
 ```
 
-### Idempotence
+## Nondestructivity
 
 - Never deletes a user or group, only disables them when they are not present
   in the config anymore.
@@ -46,7 +46,7 @@ re-use is best illustrated by an example. Imagine the following scenario:
 - This user can now access files from a previously existing user because their
   UIDs are the same.
 
-Limitations:
+### Limitations to Nondestructivity
 
 - When you provide a plaintext password in the config (which you really
   shouldn't!), the hashed password is updated each time userborn runs. This can
@@ -56,6 +56,11 @@ Limitations:
   in plaintext!) and it will only suppress a single log line.
 - Userborn can handle comments in the password database files but it will
   silently discard them.
+- Userborn will sort the password database files by GID/UID. This influences
+  only the representation inside the text files but doesn't change the way
+  group/user resolution works.
+- Userborn will discard entries in the shadow database that are not present in
+  the passwd database. It will warn about these inconsistent entries.
 
 ## Comparison With Other Tools for Declarative User Management
 
