@@ -48,15 +48,7 @@
           ...
         }:
         {
-          packages = {
-            userborn = pkgs.userborn.overrideAttrs {
-              src = lib.sourceFilesBySuffices ./rust/userborn [
-                ".rs"
-                ".toml"
-                ".lock"
-              ];
-              sourceRoot = null;
-            };
+          packages = (import ./nix/packages { inherit pkgs; }) // {
             default = config.packages.userborn;
           };
 

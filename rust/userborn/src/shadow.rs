@@ -1,9 +1,8 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{bail, Context, Result};
-use indexmap::IndexMap;
 
-use crate::fs::atomic_write;
+use crate::{fs::atomic_write, passwd::Passwd};
 
 /// A locked and invalid password.
 const PASSWORD_LOCKED_AND_INVALID: &str = "!*";
@@ -102,7 +101,8 @@ impl Entry {
     }
 }
 
-pub struct Shadow(IndexMap<String, Entry>);
+#[derive(Default)]
+pub struct Shadow(BTreeMap<String, Entry>);
 
 impl Shadow {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
@@ -113,7 +113,7 @@ impl Shadow {
     }
 
     fn from_buffer(s: &str) -> Self {
-        let mut entries = IndexMap::new();
+        let mut entries = BTreeMap::new();
         for line in s.lines() {
             if let Some(e) = Entry::from_line(line) {
                 entries.insert(e.name.clone(), e.clone());
@@ -124,17 +124,35 @@ impl Shadow {
         Self(entries)
     }
 
-    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer(), 0o000)
+    /// Write the shadow database to a file.
+    ///
+    /// Sort the entries by their UIDs in the passwd database.
+    pub fn to_file_sorted(&self, passwd: &Passwd, path: impl AsRef<Path>) -> Result<()> {
+        atomic_write(path, self.to_buffer_sorted(passwd), 0o000)
     }
 
-    pub fn to_buffer(&self) -> String {
+    /// Write the shadow database to a string buffer.
+    ///
+    /// Sort the entries by their UIDs in the passwd database.
+    pub fn to_buffer_sorted(&self, passwd: &Passwd) -> String {
+        let passwd_entries = passwd.entries();
         let mut s = String::new();
-        for entry in self.0.values() {
-            s.push_str(&entry.to_line());
-            s.push('\n');
+
+        for passwd_entry in passwd_entries {
+            let name = passwd_entry.name();
+            if let Some(shadow_entry) = self.get(name) {
+                s.push_str(&shadow_entry.to_line());
+                s.push('\n');
+            } else {
+                // This should only happen if the DB was somehow manually tampered with.
+                log::warn!("Passwd DB contains entry for {name} that is not in Shadow DB");
+            };
         }
         s
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Entry> {
+        self.0.get(name)
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Entry> {
@@ -157,12 +175,6 @@ impl Shadow {
 
     pub fn entries_mut(&mut self) -> impl IntoIterator<Item = &mut Entry> {
         self.0.values_mut()
-    }
-}
-
-impl Default for Shadow {
-    fn default() -> Self {
-        Self(IndexMap::new())
     }
 }
 
@@ -200,28 +212,47 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn read_and_write_back() {
+    fn sort() {
+        let passwd_buffer = indoc! {"
+            nixbld5:x:5:5:::
+            nixbld18:x:18:18:::
+            root:x:0:0:::
+            gary:x:1000:1000:::
+        "};
+        let passwd = Passwd::from_buffer(passwd_buffer);
+
         let buffer = indoc! {"
             nixbld5:!:1::::::
             nixbld18:!:1::::::
             root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::
             gary:*:16034:0:99999:7:::
         "};
-
         let shadow = Shadow::from_buffer(buffer);
-        let recreated_buffer = shadow.to_buffer();
-        assert_eq!(buffer, recreated_buffer);
+        let recreated_buffer = shadow.to_buffer_sorted(&passwd);
+
+        let expected = expect![[r#"
+            root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::
+            nixbld5:!:1::::::
+            nixbld18:!:1::::::
+            gary:*:16034:0:99999:7:::
+        "#]];
+        expected.assert_eq(&recreated_buffer);
     }
 
     #[test]
     fn skip_comments_and_broken_lines() {
+        let passwd_buffer = indoc! {"
+            root:x:0:0:::
+        "};
+        let passwd = Passwd::from_buffer(passwd_buffer);
+
         let buffer = indoc! {"
             root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::
             # Comment
             d,smlfsd,füpdfm
         "};
-        let group = Shadow::from_buffer(buffer);
-        let recreated_buffer = group.to_buffer();
+        let shadow = Shadow::from_buffer(buffer);
+        let recreated_buffer = shadow.to_buffer_sorted(&passwd);
 
         let expected = expect![[r"
             root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::

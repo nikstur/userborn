@@ -75,7 +75,7 @@ fn run() -> Result<()> {
     // We should create backup files with an `-` appended to the file name.
     group_db.to_file(group_path)?;
     passwd_db.to_file(passwd_path)?;
-    shadow_db.to_file(shadow_path)?;
+    shadow_db.to_file_sorted(&passwd_db, shadow_path)?;
 
     Ok(())
 }
@@ -388,10 +388,10 @@ mod tests {
 
         update_users_and_groups(&gen0()?, &mut group_db, &mut passwd_db, &mut shadow_db);
 
-        let expected_group = expect![[r"
-            wheel:x:999:normalo
+        let expected_group = expect![[r#"
             root:x:0:root
-        "]];
+            wheel:x:999:normalo
+        "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
         let expected_passwd = expect![[r"
@@ -402,59 +402,59 @@ mod tests {
         let expected_shadow = expect![[r"
             root:!*:1::::::
         "]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer());
+        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
         // GEN 1
 
         update_users_and_groups(&gen1()?, &mut group_db, &mut passwd_db, &mut shadow_db);
 
         let expected_group = expect![[r#"
-            wheel:x:999:normalo,initial
             root:x:0:root
-            normalo:x:1000:normalo
             initial:x:998:initial
+            wheel:x:999:normalo,initial
+            normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
         let expected_passwd = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
-            normalo:x:1000:1000::/home/normalo:/bin/bash
             initial:x:999:999:::/run/current-system/sw/bin/nologin
+            normalo:x:1000:1000::/home/normalo:/bin/bash
         "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r"
+        let expected_shadow = expect![[r#"
             root:!*:1::::::
-            normalo:$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7:1::::::
             initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
-        "]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer());
+            normalo:$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7:1::::::
+        "#]];
+        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
         // GEN 2
 
         update_users_and_groups(&gen2()?, &mut group_db, &mut passwd_db, &mut shadow_db);
 
         let expected_group = expect![[r#"
-            wheel:x:999:normalo,initial
             root:x:0:root
-            normalo:x:1000:normalo
             initial:x:998:initial
+            wheel:x:999:normalo,initial
+            normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
         let expected_passwd = expect![[r#"
             root:x:0:0::/root:/run/current-system/sw/bin/nologin
-            normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/bash
             initial:x:999:999:::/run/current-system/sw/bin/nologin
+            normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/bash
         "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r"
+        let expected_shadow = expect![[r#"
             root:!*:1::::::
-            normalo:$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A:1::::::
             initial:!*:1::::::
-        "]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer());
+            normalo:$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A:1::::::
+        "#]];
+        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
         Ok(())
     }

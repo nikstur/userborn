@@ -1,7 +1,10 @@
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use anyhow::{bail, Context, Result};
-use indexmap::IndexMap;
 
 use crate::{fs::atomic_write, id};
 
@@ -85,11 +88,12 @@ fn join_group_members(v: &[String]) -> String {
     v.join(",")
 }
 
+#[derive(Default)]
 pub struct Group {
     /// Entries of /etc/group keyed by group name.
-    entries: IndexMap<String, Entry>,
-    /// Already allocated GIDs.
-    gids: BTreeSet<u32>,
+    entries: BTreeMap<u32, Entry>,
+    /// A mapping from names to GIDs.
+    gids: BTreeMap<String, u32>,
 }
 
 impl Group {
@@ -101,12 +105,12 @@ impl Group {
     }
 
     fn from_buffer(s: &str) -> Self {
-        let mut entries = IndexMap::new();
-        let mut gids = BTreeSet::new();
+        let mut entries = BTreeMap::new();
+        let mut gids = BTreeMap::new();
         for line in s.lines() {
             if let Some(e) = Entry::from_line(line) {
-                gids.insert(e.gid);
-                entries.insert(e.name.clone(), e.clone());
+                entries.insert(e.gid, e.clone());
+                gids.insert(e.name.clone(), e.gid);
             } else {
                 log::warn!("Skipping group line because it cannot be parsed: {line}.");
             }
@@ -128,26 +132,26 @@ impl Group {
     }
 
     pub fn get(&self, name: &str) -> Option<&Entry> {
-        self.entries.get(name)
+        let gid = self.gids.get(name);
+        gid.and_then(|gid| self.entries.get(gid))
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Entry> {
-        self.entries.get_mut(name)
+        let gid = self.gids.get(name);
+        gid.and_then(|gid| self.entries.get_mut(gid))
     }
 
     pub fn insert(&mut self, entry: &Entry) -> Result<()> {
-        if self.gids.contains(&entry.gid) {
+        if self.entries.contains_key(&entry.gid) {
             bail!("Group with GID {} already exists", entry.gid);
         }
 
-        if self.entries.contains_key(&entry.name) {
+        if self.gids.contains_key(&entry.name) {
             bail!("Group {} already exists", entry.name);
         }
 
-        self.entries
-            .entry(entry.name.clone())
-            .or_insert(entry.clone());
-        self.gids.insert(entry.gid);
+        self.entries.entry(entry.gid).or_insert(entry.clone());
+        self.gids.insert(entry.name.clone(), entry.gid);
 
         Ok(())
     }
@@ -155,21 +159,13 @@ impl Group {
     /// Allocate a new (i.e. unused) GID.
     ///
     /// Returns `Err` if it cannot allocate a new GID because all in the range are already used.
-    pub fn allocate_gid(&self, is_normal_group: bool) -> Result<u32> {
-        id::allocate(&self.gids, is_normal_group)
+    pub fn allocate_gid(&self, is_normal: bool) -> Result<u32> {
+        let allocated_gids = self.entries.keys().copied().collect::<BTreeSet<u32>>();
+        id::allocate(&allocated_gids, is_normal)
     }
 
     pub fn contains_gid(&self, gid: u32) -> bool {
-        self.gids.contains(&gid)
-    }
-}
-
-impl Default for Group {
-    fn default() -> Self {
-        Self {
-            entries: IndexMap::new(),
-            gids: BTreeSet::new(),
-        }
+        self.entries.contains_key(&gid)
     }
 }
 
@@ -181,16 +177,21 @@ mod tests {
     use indoc::indoc;
 
     #[test]
-    fn read_and_write_back() {
+    fn sort() {
         let buffer = indoc! {"
             nixbld:x:30000:nixbld1,nixbld10,nixbld11,nixbld12,nixbld13,nixbld14,nixbld15,nixbld16,nixbld17,nixbld18,nixbld19,nixbld2,nixbld20,nixbld21,nixbld22,nixbld23,nixbld24,nixbld25,nixbld26,nixbld27,nixbld28,nixbld29,nixbld3,nixbld30,nixbld31,nixbld32,nixbld4,nixbld5,nixbld6,nixbld7,nixbld8,nixbld9
             messagebus:x:4:
             wheel:x:1:peter
         "};
-
         let group = Group::from_buffer(buffer);
         let recreated_buffer = group.to_buffer();
-        assert_eq!(buffer, recreated_buffer);
+
+        let expected = expect![[r#"
+            wheel:x:1:peter
+            messagebus:x:4:
+            nixbld:x:30000:nixbld1,nixbld10,nixbld11,nixbld12,nixbld13,nixbld14,nixbld15,nixbld16,nixbld17,nixbld18,nixbld19,nixbld2,nixbld20,nixbld21,nixbld22,nixbld23,nixbld24,nixbld25,nixbld26,nixbld27,nixbld28,nixbld29,nixbld3,nixbld30,nixbld31,nixbld32,nixbld4,nixbld5,nixbld6,nixbld7,nixbld8,nixbld9
+        "#]];
+        expected.assert_eq(&recreated_buffer);
     }
 
     #[test]
