@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0
 
 - Userborn now calls `libxcrypt` directly via the `xcrypt` crate instead of
   shelling out to `mkpasswd`. This enables us to not change the password hash
