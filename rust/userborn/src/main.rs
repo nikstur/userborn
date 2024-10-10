@@ -262,20 +262,22 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
     if let Some(existing_entry) = shadow_db.get_mut(&user_config.name) {
         log::debug!("Updating shadow entry for {}...", user_config.name);
 
-        let hashed_password =
-            HashedPassword::from_config(&user_config.password, &user_config.name)?.and_then(
-                |hashed_password| match hashed_password {
-                    HashedPassword::Override(s) => Some(s),
-                    HashedPassword::Initial(_) => None,
-                },
-            );
+        let hashed_password = HashedPassword::from_config(
+            &user_config.password,
+            Some(existing_entry.password()),
+            &user_config.name,
+        )?
+        .and_then(|hashed_password| match hashed_password {
+            HashedPassword::Override(s) => Some(s),
+            HashedPassword::Initial(_) => None,
+        });
 
         existing_entry.update(hashed_password);
     } else {
         log::debug!("Creating shadow entry for {}...", user_config.name);
 
         let hashed_password =
-            HashedPassword::from_config(&user_config.password, &user_config.name)?.map(
+            HashedPassword::from_config(&user_config.password, None, &user_config.name)?.map(
                 |hashed_password| match hashed_password {
                     HashedPassword::Override(s) | HashedPassword::Initial(s) => s,
                 },
@@ -315,6 +317,13 @@ mod tests {
                     "name": "root",
                     "uid": 0,
                 },
+                {
+                    "isNormal": true,
+                    "name": "normalo",
+                    "home": "/home/normalo",
+                    "shell": "/bin/bash",
+                    "hashedPassword": "$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4", // "hello"
+                },
             ],
             "groups": [
                 {
@@ -335,9 +344,11 @@ mod tests {
                 {
                     "isNormal": true,
                     "name": "normalo",
-                    "home": "/home/normalo",
-                    "shell": "/bin/bash",
-                    "hashedPassword": "$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7",
+                    // This should update the shell to zsh
+                    "shell": "/bin/zsh",
+                    // This shouldn't change the hash as it hashes the same as the existing
+                    // password
+                    "password": "hello",
                 },
                 {
                     "isNormal": false,
@@ -391,17 +402,20 @@ mod tests {
         let expected_group = expect![[r#"
             root:x:0:root
             wheel:x:999:normalo
+            normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r"
+        let expected_passwd = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
-        "]];
+            normalo:x:1000:1000::/home/normalo:/bin/bash
+        "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r"
+        let expected_shadow = expect![[r#"
             root:!*:1::::::
-        "]];
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
+        "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
         // GEN 1
@@ -419,14 +433,14 @@ mod tests {
         let expected_passwd = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
             initial:x:999:999:::/run/current-system/sw/bin/nologin
-            normalo:x:1000:1000::/home/normalo:/bin/bash
+            normalo:x:1000:1000::/home/normalo:/bin/zsh
         "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 
         let expected_shadow = expect![[r#"
             root:!*:1::::::
             initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
-            normalo:$y$j9T$kX/HY3hhcOSAlNLIhIhcL0$6TUZ0NNT18KBynYbuezPnk79TqyzRjH0BTE5h/m6Go7:1::::::
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
         "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
@@ -445,7 +459,7 @@ mod tests {
         let expected_passwd = expect![[r#"
             root:x:0:0::/root:/run/current-system/sw/bin/nologin
             initial:x:999:999:::/run/current-system/sw/bin/nologin
-            normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/bash
+            normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/zsh
         "#]];
         expected_passwd.assert_eq(&passwd_db.to_buffer());
 

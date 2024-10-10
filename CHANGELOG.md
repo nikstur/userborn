@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+- Userborn now calls `libxcrypt` directly via the `xcrypt` crate instead of
+  shelling out to `mkpasswd`. This enables us to not change the password hash
+  when a plaintext password is provided. We now check whether the password from
+  the config matches the hashed password and then re-use the salt instead of
+  generating a new salt. Please note that this changes nothing about the
+  security posture of Userborn. If you provide a plaintext password to
+  Userborn, there is nothing Userborn can do to protect it from leaking.
+
 ## 0.2.0
 
 - /etc/{group,passwd,shadow} are now sorted by GID/UID. This follows the

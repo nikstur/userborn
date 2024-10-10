@@ -1,8 +1,7 @@
 {
   lib,
   rustPlatform,
-  makeBinaryWrapper,
-  mkpasswd,
+  libxcrypt,
 }:
 
 let
@@ -22,15 +21,13 @@ rustPlatform.buildRustPackage {
     lockFile = ../../rust/userborn/Cargo.lock;
   };
 
-  nativeBuildInputs = [ makeBinaryWrapper ];
+  nativeBuildInputs = [
+    rustPlatform.bindgenHook
+  ];
 
-  buildInputs = [ mkpasswd ];
-
-  nativeCheckInputs = [ mkpasswd ];
-
-  postInstall = ''
-    wrapProgram $out/bin/userborn --prefix PATH : ${lib.makeBinPath [ mkpasswd ]}
-  '';
+  buildInputs = [
+    libxcrypt
+  ];
 
   stripAllList = [ "bin" ];
 
