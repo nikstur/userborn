@@ -9,6 +9,10 @@
   generating a new salt. Please note that this changes nothing about the
   security posture of Userborn. If you provide a plaintext password to
   Userborn, there is nothing Userborn can do to protect it from leaking.
+- You can now configure the path to the `nologin` binary via the compile-time
+  environment variable `USERBORN_NO_LOGIN_DEFAULT_PATH` and the runtime
+  variable `USERBORN_NO_LOGIN_PATH`. These values are used when no explicit
+  shell is provided in the user config.
 
 ## 0.2.0
 
