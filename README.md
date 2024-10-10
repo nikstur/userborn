@@ -48,12 +48,6 @@ re-use is best illustrated by an example. Imagine the following scenario:
 
 ### Limitations to Nondestructivity
 
-- When you provide a plaintext password in the config (which you really
-  shouldn't!), the hashed password is updated each time userborn runs. This can
-  be fixed in the future by calling `crypt()` directly (and re-using the
-  previos salt) instead of running `mkpasswd` in a subprocess. However, the
-  security gains of this would be 0 (because the password is already available
-  in plaintext!) and it will only suppress a single log line.
 - Userborn can handle comments in the password database files but it will
   silently discard them.
 - Userborn will sort the password database files by GID/UID. This influences

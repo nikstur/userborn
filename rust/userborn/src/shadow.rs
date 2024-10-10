@@ -99,6 +99,10 @@ impl Entry {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn password(&self) -> &str {
+        &self.password
+    }
 }
 
 #[derive(Default)]
