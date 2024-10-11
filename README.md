@@ -56,6 +56,33 @@ re-use is best illustrated by an example. Imagine the following scenario:
 - Userborn will discard entries in the shadow database that are not present in
   the passwd database. It will warn about these inconsistent entries.
 
+## Configuration
+
+You can configure Userborn during runtime via the provided config file and via
+environment variables.
+
+### Environment Variables
+
+- `USERBORN_NO_LOGIN_PATH`: Set this to the path of the `nologin` binary on
+  your system. This path is used when the user config doesn't specify a
+  `shell`. If this enviroment variable is set, its value overrides
+  `USERBORN_NO_LOGIN_DEFAULT_PATH`.
+
+## Building Userborn
+
+Runtime dependencies:
+
+- `libxcrypt`
+
+### Build-Time Parameters
+
+You can configure Userborn via compile-time environment variables:
+
+- `USERBORN_NO_LOGIN_DEFAULT_PATH`: Set this to the default path of the
+  `nologin` binary in your distro or system. If this is not set, the value
+  `/run/current-system/sw/bin/nologin` is used which will only make sense on
+  NixOS.
+
 ## Comparison With Other Tools for Declarative User Management
 
 ### systemd-sysusers

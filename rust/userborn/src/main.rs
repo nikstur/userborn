@@ -17,8 +17,15 @@ use passwd::Passwd;
 use password::HashedPassword;
 use shadow::Shadow;
 
-/// Path to the nologin binary.
-const NO_LOGIN: &str = "/run/current-system/sw/bin/nologin";
+/// Fallback path to the nologin binary.
+///
+/// This is used when `USERBORN_NO_LOGIN_PATH` is not set during runtime and
+/// `USERBORN_NO_LOGIN_DEFAULT_PATH` hasn't been set during compilation.
+const NO_LOGIN_FALLBACK: &str = "/run/current-system/sw/bin/nologin";
+/// Default path to the nolign binary.
+///
+/// This can be configured via a compile-time environment variable.
+const NO_LOGIN_DEFAULT: Option<&'static str> = option_env!("USERBORN_NO_LOGIN_DEFAULT_PATH");
 const DEFAULT_DIRECTORY: &str = "/etc";
 
 fn main() -> ExitCode {
@@ -192,7 +199,10 @@ fn create_user(
         gid,
         user_config.description.clone().unwrap_or_default(),
         user_config.home.clone().unwrap_or_default(),
-        user_config.shell.clone().unwrap_or(NO_LOGIN.into()),
+        user_config.shell.clone().unwrap_or(
+            std::env::var("USERBORN_NO_LOGIN_PATH")
+                .unwrap_or(NO_LOGIN_DEFAULT.unwrap_or(NO_LOGIN_FALLBACK).into()),
+        ),
     );
 
     let description = new_entry.describe();
@@ -391,6 +401,9 @@ mod tests {
 
     #[test]
     fn update_users_and_groups_across_generations() -> Result<()> {
+        // Explitly set this because the expected values depend on this.
+        std::env::set_var("USERBORN_NO_LOGIN_PATH", NO_LOGIN_FALLBACK);
+
         let mut group_db = Group::default();
         let mut passwd_db = Passwd::default();
         let mut shadow_db = Shadow::default();
