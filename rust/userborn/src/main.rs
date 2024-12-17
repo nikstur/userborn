@@ -98,7 +98,9 @@ fn update_users_and_groups(
 ) {
     for group_config in &config.groups {
         if let Some(existing_entry) = group_db.get_mut(&group_config.name) {
-            existing_entry.update(group_config.members.clone());
+            let mut members = group_config.members.clone();
+            members.dedup();
+            existing_entry.update(members);
         } else if let Err(e) = create_group(group_config, group_db) {
             log::error!("Failed to create group {}: {e:#}", group_config.name);
         };
@@ -401,7 +403,7 @@ mod tests {
 
     #[test]
     fn update_users_and_groups_across_generations() -> Result<()> {
-        // Explitly set this because the expected values depend on this.
+        // Explicitly set this because the expected values depend on this.
         std::env::set_var("USERBORN_NO_LOGIN_PATH", NO_LOGIN_FALLBACK);
 
         let mut group_db = Group::default();
