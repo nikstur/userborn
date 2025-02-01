@@ -98,9 +98,7 @@ fn update_users_and_groups(
 ) {
     for group_config in &config.groups {
         if let Some(existing_entry) = group_db.get_mut(&group_config.name) {
-            let mut members = group_config.members.clone();
-            members.dedup();
-            existing_entry.update(members);
+            existing_entry.update(group_config.members.clone());
         } else if let Err(e) = create_group(group_config, group_db) {
             log::error!("Failed to create group {}: {e:#}", group_config.name);
         };
@@ -187,7 +185,7 @@ fn create_user(
             is_normal: user_config.is_normal,
             name: user_config.name.clone(),
             gid,
-            members: vec![user_config.name.clone()],
+            members: BTreeSet::from([user_config.name.clone()]),
         };
 
         create_group(&group_config, group_db)
@@ -440,7 +438,7 @@ mod tests {
         let expected_group = expect![[r#"
             root:x:0:root
             initial:x:998:initial
-            wheel:x:999:normalo,initial
+            wheel:x:999:initial,normalo
             normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
@@ -466,7 +464,7 @@ mod tests {
         let expected_group = expect![[r#"
             root:x:0:root
             initial:x:998:initial
-            wheel:x:999:normalo,initial
+            wheel:x:999:initial,normalo
             normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
