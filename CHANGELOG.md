@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+- Group memberships in /etc/users are now forcibly unique and alphabetically
+  sorted, even if they weren't sorted in the config.
+
 ## 0.3.0
 
 - Userborn now calls `libxcrypt` directly via the `xcrypt` crate instead of
