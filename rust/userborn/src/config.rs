@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::{fs::File, io::Read, path::Path};
 
 use anyhow::{Context, Result};
@@ -48,7 +49,7 @@ pub struct Group {
     pub gid: Option<u32>,
     /// The members of this group
     #[serde(default)]
-    pub members: Vec<String>,
+    pub members: BTreeSet<String>,
 }
 
 #[derive(Deserialize, Debug)]

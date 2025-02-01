@@ -13,12 +13,12 @@ pub struct Entry {
     name: String,
     password: String,
     gid: u32,
-    user_list: Vec<String>,
+    user_list: BTreeSet<String>,
 }
 
 impl Entry {
     /// Create a new /etc/group entry.
-    pub fn new(name: String, gid: u32, user_list: Vec<String>) -> Self {
+    pub fn new(name: String, gid: u32, user_list: BTreeSet<String>) -> Self {
         Self {
             name,
             password: "x".into(),
@@ -28,7 +28,7 @@ impl Entry {
     }
 
     /// Update an /etc/group entry.
-    pub fn update(&mut self, user_list: Vec<String>) {
+    pub fn update(&mut self, user_list: BTreeSet<String>) {
         if self.user_list != user_list {
             log::info!(
                 "Updating members of group {} from {:?} to {user_list:?}...",
@@ -76,16 +76,16 @@ impl Entry {
 }
 
 /// Split a string containing group members separated by `,` into a list.
-fn split_group_members(s: &str) -> Vec<String> {
+fn split_group_members(s: &str) -> BTreeSet<String> {
     if s.is_empty() {
-        return Vec::new();
+        return BTreeSet::new();
     }
     s.split(',').map(ToString::to_string).collect()
 }
 
 /// Join a list of group members into a string separating each group name with a `,`.
-fn join_group_members(v: &[String]) -> String {
-    v.join(",")
+fn join_group_members(v: &BTreeSet<String>) -> String {
+    v.clone().into_iter().collect::<Vec<_>>().join(",")
 }
 
 #[derive(Default)]
