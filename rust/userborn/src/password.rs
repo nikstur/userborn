@@ -49,7 +49,7 @@ impl HashedPassword {
         } else if let Some(raw_password) = &password_config.password {
             log::debug!("Using password for user {name}...");
             log::warn!(
-                "User {name} uses a plaintext password. This is inscure and should only be used for testing purposes."
+                "User {name} uses a plaintext password. This is insecure and should only be used for testing purposes."
             );
             Some(Self::Override(
                 hash_password(raw_password, current_password).context("Failed to hash password")?,
@@ -60,7 +60,7 @@ impl HashedPassword {
         } else if let Some(raw_password) = &password_config.initial_password {
             log::debug!("Using initialPassword for user {name}...");
             log::warn!(
-                "User {name} uses a plaintext password. This is inscure and should only be used for testing purposes."
+                "User {name} uses a plaintext password. This is insecure and should only be used for testing purposes."
             );
             Some(Self::Initial(
                 hash_password(raw_password, current_password).context("Failed to hash password")?,
