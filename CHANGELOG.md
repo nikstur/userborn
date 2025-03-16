@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0
 
 - Group memberships in /etc/users are now forcibly unique and alphabetically
   sorted, even if they weren't sorted in the config.
