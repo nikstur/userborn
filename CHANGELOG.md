@@ -4,6 +4,7 @@
 
 - Group memberships in /etc/users are now forcibly unique and alphabetically
   sorted, even if they weren't sorted in the config.
+- Update xcrypt to 0.3.1. Now Userborn supports 32 bit.
 
 ## 0.3.0
 
