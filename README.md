@@ -101,8 +101,8 @@ Userborn has two key differences from systemd-sysusers:
    easier and fully backwards compatible.
 2. Takes full ownership of the password database and thus also (destructively)
    changes user entries. For example, it can change passwords, home
-   directories, default shell, etc. Please see the [Idempotence
-   section](#Idempotence) for details of what Userborn can change and what it
+   directories, default shell, etc. Please see the [Nondestructivity
+   section](#Nondestructivity) for details of what Userborn can change and what it
    will never change.
 
 ### NixOS `update-users-groups.pl`
