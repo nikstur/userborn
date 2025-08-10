@@ -96,7 +96,11 @@ fn update_users_and_groups(
     passwd_db: &mut Passwd,
     shadow_db: &mut Shadow,
 ) {
+    let mut groups_in_config: BTreeSet<&str> = BTreeSet::new();
+
     for group_config in &config.groups {
+        groups_in_config.insert(&group_config.name);
+
         if let Some(existing_entry) = group_db.get_mut(&group_config.name) {
             existing_entry.update(group_config.members.clone());
         } else if let Err(e) = create_group(group_config, group_db) {
@@ -105,9 +109,13 @@ fn update_users_and_groups(
     }
 
     let mut users_in_config: BTreeSet<&str> = BTreeSet::new();
+    let mut implicit_primary_groups: BTreeSet<&str> = BTreeSet::new();
 
     for user_config in &config.users {
         users_in_config.insert(&user_config.name);
+        if user_config.group.is_none() {
+            implicit_primary_groups.insert(&user_config.name);
+        }
 
         if let Some(existing_entry) = passwd_db.get_mut(&user_config.name) {
             if let Err(e) = update_user(existing_entry, user_config, group_db, shadow_db) {
@@ -116,6 +124,17 @@ fn update_users_and_groups(
         } else if let Err(e) = create_user(user_config, group_db, passwd_db, shadow_db) {
             log::error!("Failed to create user {}: {e:#}", user_config.name);
         };
+    }
+
+    // Find groups in the DB that are not in the config and empty them.
+    for entry in group_db.entries_mut() {
+        if !groups_in_config.contains(entry.name()) {
+            if implicit_primary_groups.contains(entry.name()) {
+                entry.update(BTreeSet::from([entry.name().to_owned()]));
+            } else {
+                entry.update(BTreeSet::new());
+            };
+        }
     }
 
     // Find users in the shadow DB that are not in the config and disable them.
@@ -463,8 +482,8 @@ mod tests {
 
         let expected_group = expect![[r#"
             root:x:0:root
-            initial:x:998:initial
-            wheel:x:999:initial,normalo
+            initial:x:998:
+            wheel:x:999:
             normalo:x:1000:normalo
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
