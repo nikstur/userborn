@@ -73,6 +73,10 @@ impl Entry {
     pub fn gid(&self) -> u32 {
         self.gid
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// Split a string containing group members separated by `,` into a list.
@@ -166,6 +170,10 @@ impl Group {
 
     pub fn contains_gid(&self, gid: u32) -> bool {
         self.entries.contains_key(&gid)
+    }
+
+    pub fn entries_mut(&mut self) -> impl IntoIterator<Item = &mut Entry> {
+        self.entries.values_mut()
     }
 }
 
