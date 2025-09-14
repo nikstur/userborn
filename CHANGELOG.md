@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 (Unreleased)
+
+- Groups that were removed from the config are now emptied (all their users are
+  removed from it). This makes the behaviour consistent with the way we treat
+  users. They're never removed (to avoid GID re-use) but effectively disabled.
+
 ## 0.4.0
 
 - Group memberships in /etc/users are now forcibly unique and alphabetically
