@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
+    ":dependencyDashboard",
     ":semanticCommitsDisabled",
     "group:all",
     "schedule:monthly",
