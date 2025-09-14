@@ -1,14 +1,19 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
+    ":semanticCommitsDisabled",
     "group:all",
-    "schedule:monthly"
+    "schedule:monthly",
+    ":maintainLockFilesMonthly"
   ],
   "lockFileMaintenance": {
-    "enabled": true
+    "commitMessageAction": "update",
+    "extends": [
+      "group:all"
+    ]
   },
   "nix": {
     "enabled": true
-  }
+  },
+  "separateMajorMinor": false
 }
