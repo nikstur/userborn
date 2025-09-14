@@ -5,7 +5,6 @@
     "group:all",
     "schedule:monthly"
   ],
-  "dependencyDashboard": false,
   "lockFileMaintenance": {
     "enabled": true
   },
