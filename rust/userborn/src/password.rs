@@ -79,7 +79,7 @@ impl HashedPassword {
 /// actual password hasn't changed.
 ///
 /// This function doesn't need to be particularly secure since the original password cannot be
-/// treated as secure as it's passed via a plaintxt config. This is, e.g. why it doesn't zeroize
+/// treated as secure as it's passed via a plaintext config. This is, e.g. why it doesn't zeroize
 /// the buffer.
 ///
 /// It only serves to convert a non-secret raw password into a format that is understood by

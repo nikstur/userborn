@@ -22,7 +22,7 @@ use shadow::Shadow;
 /// This is used when `USERBORN_NO_LOGIN_PATH` is not set during runtime and
 /// `USERBORN_NO_LOGIN_DEFAULT_PATH` hasn't been set during compilation.
 const NO_LOGIN_FALLBACK: &str = "/run/current-system/sw/bin/nologin";
-/// Default path to the nolign binary.
+/// Default path to the nologin binary.
 ///
 /// This can be configured via a compile-time environment variable.
 const NO_LOGIN_DEFAULT: Option<&'static str> = option_env!("USERBORN_NO_LOGIN_DEFAULT_PATH");
@@ -79,7 +79,7 @@ fn run() -> Result<()> {
 
     log::debug!("Persisting files to disk...");
     // We should skip this if the files haven't actually changed
-    // We should create backup files with an `-` appended to the file name.
+    // We should create backup files with an `-` appended to the filename.
     group_db.to_file(group_path)?;
     passwd_db.to_file(passwd_path)?;
     shadow_db.to_file_sorted(&passwd_db, shadow_path)?;

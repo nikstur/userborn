@@ -23,7 +23,7 @@ pub fn allocate(already_allocated_ids: &BTreeSet<u32>, is_normal: bool) -> Resul
             }
         }
     }
-    bail!("Failed to allocated new UID")
+    bail!("Failed to allocated new UID/GID")
 }
 
 #[cfg(test)]

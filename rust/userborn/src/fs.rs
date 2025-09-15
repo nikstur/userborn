@@ -2,10 +2,10 @@ use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 use anyhow::{Context, Result};
 
-/// Atomicaly write a buffer into a file.
+/// Atomically write a buffer into a file.
 ///
 /// This will first write the buffer to the path with a `.tmp` suffix and then move the file to
-/// it's actual path.
+/// its actual path.
 ///
 /// This increases the atomicity of the write.
 pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32) -> Result<()> {
