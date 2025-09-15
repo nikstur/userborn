@@ -45,8 +45,8 @@ impl Entry {
             if self.password != password {
                 log::info!("Updating password of user {}...", self.name,);
                 self.password = password;
-            };
-        };
+            }
+        }
     }
 
     /// Lock the account by resetting its password.
@@ -111,7 +111,7 @@ pub struct Shadow(BTreeMap<String, Entry>);
 impl Shadow {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {:?}.", path.as_ref()))?;
+            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
 
         Ok(Self::from_buffer(&file))
     }
@@ -150,7 +150,7 @@ impl Shadow {
             } else {
                 // This should only happen if the DB was somehow manually tampered with.
                 log::warn!("Passwd DB contains entry for {name} that is not in Shadow DB");
-            };
+            }
         }
         s
     }

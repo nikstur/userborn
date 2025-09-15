@@ -125,7 +125,7 @@ mod tests {
             assert!(s.starts_with("$y$"));
         } else {
             bail!("Wrong HashedPassword variant")
-        };
+        }
 
         Ok(())
     }

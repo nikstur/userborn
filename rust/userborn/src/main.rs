@@ -105,7 +105,7 @@ fn update_users_and_groups(
             existing_entry.update(group_config.members.clone());
         } else if let Err(e) = create_group(group_config, group_db) {
             log::error!("Failed to create group {}: {e:#}", group_config.name);
-        };
+        }
     }
 
     let mut users_in_config: BTreeSet<&str> = BTreeSet::new();
@@ -120,10 +120,10 @@ fn update_users_and_groups(
         if let Some(existing_entry) = passwd_db.get_mut(&user_config.name) {
             if let Err(e) = update_user(existing_entry, user_config, group_db, shadow_db) {
                 log::error!("Failed to update user {}: {e:#}", user_config.name);
-            };
+            }
         } else if let Err(e) = create_user(user_config, group_db, passwd_db, shadow_db) {
             log::error!("Failed to create user {}: {e:#}", user_config.name);
-        };
+        }
     }
 
     // Find groups in the DB that are not in the config and empty them.
@@ -133,7 +133,7 @@ fn update_users_and_groups(
                 entry.update(BTreeSet::from([entry.name().to_owned()]));
             } else {
                 entry.update(BTreeSet::new());
-            };
+            }
         }
     }
 
@@ -320,7 +320,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
                 user_config.name
             )
         })?;
-    };
+    }
     Ok(())
 }
 

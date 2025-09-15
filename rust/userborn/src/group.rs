@@ -103,7 +103,7 @@ pub struct Group {
 impl Group {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {:?}.", path.as_ref()))?;
+            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
 
         Ok(Self::from_buffer(&file))
     }

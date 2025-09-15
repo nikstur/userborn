@@ -22,7 +22,7 @@ pub fn allocate(already_allocated_ids: &BTreeSet<u32>, is_normal: bool) -> Resul
                 return Ok(candidate);
             }
         }
-    };
+    }
     bail!("Failed to allocated new UID")
 }
 
