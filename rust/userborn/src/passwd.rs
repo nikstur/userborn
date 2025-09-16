@@ -62,7 +62,7 @@ impl Entry {
                     self.gid,
                 );
                 self.gid = gid;
-            };
+            }
         }
         if let Some(gecos) = gecos {
             if self.gecos != gecos {
@@ -72,7 +72,7 @@ impl Entry {
                     self.gecos,
                 );
                 self.gecos = gecos;
-            };
+            }
         }
         if let Some(directory) = directory {
             if self.directory != directory {
@@ -92,7 +92,7 @@ impl Entry {
                     self.shell,
                 );
                 self.shell = shell;
-            };
+            }
         }
     }
 
@@ -149,7 +149,7 @@ pub struct Passwd {
 impl Passwd {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {:?}.", path.as_ref()))?;
+            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
 
         Ok(Self::from_buffer(&file))
     }

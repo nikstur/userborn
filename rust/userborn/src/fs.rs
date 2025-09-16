@@ -2,10 +2,10 @@ use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 use anyhow::{Context, Result};
 
-/// Atomicaly write a buffer into a file.
+/// Atomically write a buffer into a file.
 ///
 /// This will first write the buffer to the path with a `.tmp` suffix and then move the file to
-/// it's actual path.
+/// its actual path.
 ///
 /// This increases the atomicity of the write.
 pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32) -> Result<()> {
@@ -25,7 +25,10 @@ pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32)
             Ok(file) => break (file, tmp_path),
             Err(err) => {
                 if err.kind() != std::io::ErrorKind::AlreadyExists {
-                    return Err(err).context(format!("Failed to open temporary file {tmp_path:?}"));
+                    return Err(err).context(format!(
+                        "Failed to open temporary file {}",
+                        tmp_path.display()
+                    ));
                 }
             }
         }
@@ -33,12 +36,17 @@ pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32)
     };
 
     file.write_all(buffer.as_ref())
-        .with_context(|| format!("Failed to write to {tmp_path:?}"))?;
+        .with_context(|| format!("Failed to write to {}", tmp_path.display()))?;
     file.sync_all()
-        .with_context(|| format!("Failed to sync the temporary file {tmp_path:?}"))?;
+        .with_context(|| format!("Failed to sync the temporary file {}", tmp_path.display()))?;
 
-    fs::rename(&tmp_path, &path)
-        .with_context(|| format!("Failed to rename {tmp_path:?} to {:?}", path.as_ref()))?;
+    fs::rename(&tmp_path, &path).with_context(|| {
+        format!(
+            "Failed to rename {} to {}",
+            tmp_path.display(),
+            path.as_ref().display()
+        )
+    })?;
 
     Ok(())
 }
