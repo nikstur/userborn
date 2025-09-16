@@ -14,7 +14,7 @@ Declaratively bear (manage) Linux users and groups.
 
 ### Where does it run?
 
-It is undeniable that Userborn finds it's origin in NixOS. However, Userborn
+It is undeniable that Userborn finds its origin in NixOS. However, Userborn
 has been designed to work on any distro. It is effectively distro-agnostic. It
 will run on any Linux.
 
@@ -40,7 +40,7 @@ re-use is best illustrated by an example. Imagine the following scenario:
 - A new user with the UID 1000 is created. The user creates all sorts of files
   owned by them (via their UID).
 - This user is deleted, their UID is freed up.
-- A new user (with a differnent username) is created and get's allocated a new
+- A new user (with a different username) is created and gets allocated a new
   UID. The allocation algorithm doesn't know that previously a user with the
   UID 1000 existed so it allocates UID 1000 to the new user.
 - This user can now access files from a previously existing user because their
@@ -65,7 +65,7 @@ environment variables.
 
 - `USERBORN_NO_LOGIN_PATH`: Set this to the path of the `nologin` binary on
   your system. This path is used when the user config doesn't specify a
-  `shell`. If this enviroment variable is set, its value overrides
+  `shell`. If this environment variable is set, its value overrides
   `USERBORN_NO_LOGIN_DEFAULT_PATH`.
 
 ## Building Userborn
@@ -118,3 +118,61 @@ Userborn:
 ### Limitations
 
 - Currently doesn't support group passwords (and thus also doesn't support `/etc/gshadow`).
+- Doesn't handle SUBUID/SUBGIDs.
+
+## Replacing `system.activationScripts`
+
+On NixOS, Userborn is not run as an activation script unlike
+`update-users-groups.pl`. This means that scripts that relied on running after
+users are created need to be replaced when using Userborn. There are, however,
+more reasons to replace activation scripts and I personally believe that all of
+them should be replaced.
+
+The following describes effective strategies to replace activation scripts in
+the order you should consider them.
+
+### [systemd-tmpfiles](https://www.freedesktop.org/software/systemd/man/latest/systemd-tmpfiles-setup.service.html)
+
+Simple activation scripts that only create files, move them, change
+permissions, etc. can usually be converted to systemd-tmpfiles configs via
+[`systemd.tmpfiles.settings`](https://search.nixos.org/options?channel=unstable&query=systemd.tmpfiles.settings).
+
+To create a cache directory for `some-service` for example:
+
+```nix
+systemd.tmpfiles.settings."some-service" = {
+  "/var/cache/some-service".d = {
+    mode = "0750";
+    user = "some-user";
+    group = "some-group";
+  };
+};
+```
+
+### [ExecStartPre=](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#ExecStartPre=)
+
+There are some more complex scenarios where activation scripts are used to
+prepare the system for some other service. These scripts can usually be run
+directly before the systemd service in question is started instead of as an
+activation script via a command or full script in `ExecStartPre=`.
+
+To run `my-script` right before `some-service` is started, for example:
+
+
+```nix
+systemd.service."some-service".serviceConfig.ExecStartPre = [
+  "${pkgs.myScript}/bin/my-script"
+];
+```
+
+### Dedicated systemd service
+
+For the very rare activation scripts that are very complicated, you can write
+an entire systemd service to execute the script. This service can then be
+ordered via the full systemd capabilities.
+
+To run `my-service` after all users and groups have been created:
+
+```nix
+systemd.service."my-service".after = [ "userborn.service" ];
+```
