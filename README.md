@@ -118,3 +118,4 @@ Userborn:
 ### Limitations
 
 - Currently doesn't support group passwords (and thus also doesn't support `/etc/gshadow`).
+- Doesn't handle SUBUID/SUBGIDs.
