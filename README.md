@@ -131,7 +131,7 @@ them should be replaced.
 The following describes effective strategies to replace activation scripts in
 the order you should consider them.
 
-### [systemd-tmpfiles](https://www.freedesktop.org/software/systemd/man/latest/systemd-tmpfiles-setup.service.html)
+### [systemd-tmpfiles](https://www.freedesktop.org/software/systemd/man/latest/tmpfiles.d.html)
 
 Simple activation scripts that only create files, move them, change
 permissions, etc. can usually be converted to systemd-tmpfiles configs via
