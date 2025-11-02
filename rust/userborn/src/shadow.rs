@@ -176,10 +176,6 @@ impl Shadow {
     pub fn entries(&self) -> impl IntoIterator<Item = &Entry> {
         self.0.values()
     }
-
-    pub fn entries_mut(&mut self) -> impl IntoIterator<Item = &mut Entry> {
-        self.0.values_mut()
-    }
 }
 
 /// Determine whether a hashing scheme used in a password is secure.

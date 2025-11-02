@@ -5,8 +5,13 @@ mod id;
 mod passwd;
 mod password;
 mod shadow;
+mod state;
 
-use std::{collections::BTreeSet, io::Write, process::ExitCode};
+use std::{
+    collections::{BTreeSet, HashSet},
+    io::Write,
+    process::ExitCode,
+};
 
 use anyhow::{anyhow, Context, Result};
 use log::{Level, LevelFilter};
@@ -16,6 +21,7 @@ use group::Group;
 use passwd::Passwd;
 use password::HashedPassword;
 use shadow::Shadow;
+use state::{OwnershipDiff, StateManager};
 
 /// Fallback path to the nologin binary.
 ///
@@ -73,7 +79,47 @@ fn run() -> Result<()> {
     let mut passwd_db = Passwd::from_file(&passwd_path).unwrap_or_default();
     let mut shadow_db = Shadow::from_file(&shadow_path).unwrap_or_default();
 
-    update_users_and_groups(&config, &mut group_db, &mut passwd_db, &mut shadow_db);
+    // Check if stateful mode is enabled via environment variable
+    let stateful_mode = std::env::var("USERBORN_STATEFUL")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false);
+
+    if stateful_mode {
+        log::info!("Running in stateful mode");
+
+        // Initialize state manager
+        let state_manager = StateManager::new(&directory);
+
+        // Load previously managed entities
+        let previous_managed = state_manager
+            .load_managed_entities()
+            .context("Failed to load managed entities state")?;
+
+        // Compute ownership changes
+        let diff = OwnershipDiff::compute(&previous_managed, &config);
+
+        // Log what changes we detected
+        diff.log_changes(&previous_managed);
+
+        // Apply updates with stateful behavior
+        update_users_and_groups_diff(
+            &config,
+            &mut group_db,
+            &mut passwd_db,
+            &mut shadow_db,
+            Some(&diff),
+        );
+
+        // Save the current managed entities
+        state_manager
+            .save_managed_entities(&config)
+            .context("Failed to save managed entities state")?;
+    } else {
+        log::info!("Running in stateless mode");
+
+        // Use stateless behavior
+        update_users_and_groups_diff(&config, &mut group_db, &mut passwd_db, &mut shadow_db, None);
+    }
 
     warn_about_weak_password_hashes(&shadow_db);
 
@@ -90,33 +136,87 @@ fn run() -> Result<()> {
 /// Create and update users and groups in the provided databases.
 ///
 /// Doesn't actually write anything to disk, only mutates the databases in memory.
-fn update_users_and_groups(
+fn update_users_and_groups_diff(
     config: &Config,
     group_db: &mut Group,
     passwd_db: &mut Passwd,
     shadow_db: &mut Shadow,
+    diff: Option<&OwnershipDiff>,
 ) {
-    let mut groups_in_config: BTreeSet<&str> = BTreeSet::new();
+    match diff {
+        Some(ownership_diff) => {
+            // Remove groups that are no longer managed
+            for group_name in &ownership_diff.groups_to_remove {
+                if let Some(existing_entry) = group_db.get_mut(group_name) {
+                    existing_entry.update(BTreeSet::new());
+                    log::info!("Emptied previously managed group {}", group_name);
+                }
+            }
 
+            // Remove users that are no longer managed
+            let users_to_remove_refs: BTreeSet<&str> = ownership_diff
+                .users_to_remove
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
+            lock_users(shadow_db, &users_to_remove_refs, "previously managed");
+        }
+        None => {
+            // Stateless mode: clean up all unmanaged entities
+            let groups_in_config: BTreeSet<&str> =
+                config.groups.iter().map(|g| g.name.as_str()).collect();
+            let users_in_config: BTreeSet<&str> =
+                config.users.iter().map(|u| u.name.as_str()).collect();
+
+            // Empty groups not in config
+            for entry in group_db.entries_mut() {
+                if !groups_in_config.contains(entry.name()) {
+                    entry.update(BTreeSet::new());
+                }
+            }
+
+            // Lock users not in config
+            let users_to_lock: BTreeSet<String> = shadow_db
+                .entries()
+                .into_iter()
+                .map(|entry| entry.name().to_owned())
+                .filter(|name| !users_in_config.contains(name.as_str()))
+                .collect();
+
+            let users_to_lock_refs: BTreeSet<&str> =
+                users_to_lock.iter().map(|s| s.as_str()).collect();
+            lock_users(shadow_db, &users_to_lock_refs, "");
+        }
+    }
+
+    // Process all configured groups and users
+    process_groups_from_config(config, group_db);
+    process_users_from_config(config, group_db, passwd_db, shadow_db);
+
+    // Update implicit primary groups
+    let users_to_remove = diff.map(|d| &d.users_to_remove);
+    update_implicit_primary_groups(config, group_db, users_to_remove);
+}
+
+/// Process all groups from the config, updating existing ones or creating new ones.
+fn process_groups_from_config(config: &Config, group_db: &mut Group) {
     for group_config in &config.groups {
-        groups_in_config.insert(&group_config.name);
-
         if let Some(existing_entry) = group_db.get_mut(&group_config.name) {
             existing_entry.update(group_config.members.clone());
         } else if let Err(e) = create_group(group_config, group_db) {
             log::error!("Failed to create group {}: {e:#}", group_config.name);
         }
     }
+}
 
-    let mut users_in_config: BTreeSet<&str> = BTreeSet::new();
-    let mut implicit_primary_groups: BTreeSet<&str> = BTreeSet::new();
-
+/// Process all users from the config, updating existing ones or creating new ones.
+fn process_users_from_config(
+    config: &Config,
+    group_db: &mut Group,
+    passwd_db: &mut Passwd,
+    shadow_db: &mut Shadow,
+) {
     for user_config in &config.users {
-        users_in_config.insert(&user_config.name);
-        if user_config.group.is_none() {
-            implicit_primary_groups.insert(&user_config.name);
-        }
-
         if let Some(existing_entry) = passwd_db.get_mut(&user_config.name) {
             if let Err(e) = update_user(existing_entry, user_config, group_db, shadow_db) {
                 log::error!("Failed to update user {}: {e:#}", user_config.name);
@@ -125,23 +225,59 @@ fn update_users_and_groups(
             log::error!("Failed to create user {}: {e:#}", user_config.name);
         }
     }
+}
 
-    // Find groups in the DB that are not in the config and empty them.
+/// Get the set of implicit primary groups (users without explicit group).
+fn get_implicit_primary_groups(config: &Config) -> BTreeSet<&str> {
+    config
+        .users
+        .iter()
+        .filter(|user_config| user_config.group.is_none())
+        .map(|user_config| user_config.name.as_str())
+        .collect()
+}
+
+/// Update implicit primary groups to contain only their associated user.
+/// If users_to_remove is provided, also empty groups for those removed users.
+fn update_implicit_primary_groups(
+    config: &Config,
+    group_db: &mut Group,
+    users_to_remove: Option<&HashSet<String>>,
+) {
+    let implicit_primary_groups = get_implicit_primary_groups(config);
+
     for entry in group_db.entries_mut() {
-        if !groups_in_config.contains(entry.name()) {
-            if implicit_primary_groups.contains(entry.name()) {
-                entry.update(BTreeSet::from([entry.name().to_owned()]));
-            } else {
-                entry.update(BTreeSet::new());
+        if implicit_primary_groups.contains(entry.name()) {
+            let should_be_members = BTreeSet::from([entry.name().to_owned()]);
+            if entry.user_list() != &should_be_members {
+                entry.update(should_be_members);
+                log::debug!("Updated implicit primary group {}", entry.name());
+            }
+        } else if let Some(users_to_remove) = users_to_remove {
+            // In stateful mode, also empty groups for removed users
+            if users_to_remove.contains(entry.name()) {
+                if !entry.user_list().is_empty() {
+                    entry.update(BTreeSet::new());
+                    log::debug!(
+                        "Emptied implicit primary group for removed user {}",
+                        entry.name()
+                    );
+                }
             }
         }
     }
+}
 
-    // Find users in the shadow DB that are not in the config and disable them.
-    for entry in shadow_db.entries_mut() {
-        if !users_in_config.contains(entry.name()) {
-            log::info!("Locking account for user {}...", entry.name());
-            entry.lock_account();
+/// Lock user accounts that are in the provided list.
+fn lock_users(shadow_db: &mut Shadow, users_to_lock: &BTreeSet<&str>, context: &str) {
+    for username in users_to_lock {
+        if let Some(existing_entry) = shadow_db.get_mut(username) {
+            if context.is_empty() {
+                log::info!("Locking account for user {}...", username);
+            } else {
+                log::info!("Locking account for {} user {}...", context, username);
+            }
+            existing_entry.lock_account();
         }
     }
 }
@@ -418,8 +554,11 @@ mod tests {
         }))?)
     }
 
-    #[test]
-    fn update_users_and_groups_across_generations() -> Result<()> {
+    /// Generic test function that runs across generations with either stateful or stateless mode
+    fn test_across_generations_generic(use_stateful_mode: bool) -> Result<()> {
+        use crate::state::{OwnershipDiff, StateManager};
+        use tempfile::TempDir;
+
         // Explicitly set this because the expected values depend on this.
         std::env::set_var("USERBORN_NO_LOGIN_PATH", NO_LOGIN_FALLBACK);
 
@@ -427,81 +566,203 @@ mod tests {
         let mut passwd_db = Passwd::default();
         let mut shadow_db = Shadow::default();
 
-        // GEN 0
+        // Add unmanaged system user to test stateful mode
+        let system_user = passwd::Entry::new(
+            "system_user".to_string(),
+            5000,
+            5000,
+            "System".to_string(),
+            "/var/empty".to_string(),
+            "/bin/false".to_string(),
+        );
+        passwd_db.insert(&system_user)?;
+        shadow_db.insert(&shadow::Entry::new(
+            "system_user".to_string(),
+            Some("$y$j9T$system.hash$test".to_string()),
+        ))?;
 
-        update_users_and_groups(&gen0()?, &mut group_db, &mut passwd_db, &mut shadow_db);
+        // Set up state management
+        let temp_dir = if use_stateful_mode {
+            Some(TempDir::new().unwrap())
+        } else {
+            None
+        };
 
-        let expected_group = expect![[r#"
+        let state_manager = temp_dir
+            .as_ref()
+            .map(|td| StateManager::new(td.path().to_str().unwrap()));
+
+        {
+            let config = gen0()?;
+            if let Some(ref sm) = state_manager {
+                let previous_managed = sm.load_managed_entities()?;
+                let diff = OwnershipDiff::compute(&previous_managed, &config);
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    Some(&diff),
+                );
+                sm.save_managed_entities(&config)?;
+            } else {
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    None,
+                );
+            }
+        }
+
+        let expected_group_gen0 = expect![[r#"
             root:x:0:root
             wheel:x:999:normalo
             normalo:x:1000:normalo
         "#]];
-        expected_group.assert_eq(&group_db.to_buffer());
+        expected_group_gen0.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r#"
+        let expected_passwd_gen0 = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
             normalo:x:1000:1000::/home/normalo:/bin/bash
+            system_user:x:5000:5000:System:/var/empty:/bin/false
         "#]];
-        expected_passwd.assert_eq(&passwd_db.to_buffer());
+        expected_passwd_gen0.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r#"
-            root:!*:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
-        "#]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
+        let system_user_password = if use_stateful_mode {
+            "$y$j9T$system.hash$test"
+        } else {
+            "!*"
+        };
+        let expected_shadow_gen0 = format!(
+            "root:!*:1::::::\nnormalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::\nsystem_user:{}:1::::::",
+            system_user_password
+        );
+        assert_eq!(
+            shadow_db.to_buffer_sorted(&passwd_db).trim(),
+            expected_shadow_gen0
+        );
 
-        // GEN 1
+        {
+            let config = gen1()?;
+            if let Some(ref sm) = state_manager {
+                let previous_managed = sm.load_managed_entities()?;
+                let diff = OwnershipDiff::compute(&previous_managed, &config);
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    Some(&diff),
+                );
+                sm.save_managed_entities(&config)?;
+            } else {
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    None,
+                );
+            }
+        }
 
-        update_users_and_groups(&gen1()?, &mut group_db, &mut passwd_db, &mut shadow_db);
-
-        let expected_group = expect![[r#"
+        let expected_group_gen1 = expect![[r#"
             root:x:0:root
             initial:x:998:initial
             wheel:x:999:initial,normalo
             normalo:x:1000:normalo
         "#]];
-        expected_group.assert_eq(&group_db.to_buffer());
+        expected_group_gen1.assert_eq(&group_db.to_buffer());
 
-        let expected_passwd = expect![[r#"
+        let expected_passwd_gen1 = expect![[r#"
             root:x:0:0:::/run/current-system/sw/bin/nologin
             initial:x:999:999:::/run/current-system/sw/bin/nologin
             normalo:x:1000:1000::/home/normalo:/bin/zsh
+            system_user:x:5000:5000:System:/var/empty:/bin/false
         "#]];
-        expected_passwd.assert_eq(&passwd_db.to_buffer());
+        expected_passwd_gen1.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r#"
-            root:!*:1::::::
-            initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
-        "#]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
+        // Shadow differs only by system_user lock status (checked above)
+        let system_user_password = if use_stateful_mode {
+            "$y$j9T$system.hash$test"
+        } else {
+            "!*"
+        };
+        let expected_shadow_gen1 = format!(
+            "root:!*:1::::::\ninitial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::\nnormalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::\nsystem_user:{}:1::::::",
+            system_user_password
+        );
+        assert_eq!(
+            shadow_db.to_buffer_sorted(&passwd_db).trim(),
+            expected_shadow_gen1
+        );
 
-        // GEN 2
+        {
+            let config = gen2()?;
+            if let Some(ref sm) = state_manager {
+                let previous_managed = sm.load_managed_entities()?;
+                let diff = OwnershipDiff::compute(&previous_managed, &config);
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    Some(&diff),
+                );
+                sm.save_managed_entities(&config)?;
+            } else {
+                update_users_and_groups_diff(
+                    &config,
+                    &mut group_db,
+                    &mut passwd_db,
+                    &mut shadow_db,
+                    None,
+                );
+            }
+        }
 
-        update_users_and_groups(&gen2()?, &mut group_db, &mut passwd_db, &mut shadow_db);
+        let expected_group_gen2 = expect![[r#"
+                root:x:0:root
+                initial:x:998:
+                wheel:x:999:
+                normalo:x:1000:normalo
+            "#]];
+        expected_group_gen2.assert_eq(&group_db.to_buffer());
 
-        let expected_group = expect![[r#"
-            root:x:0:root
-            initial:x:998:
-            wheel:x:999:
-            normalo:x:1000:normalo
-        "#]];
-        expected_group.assert_eq(&group_db.to_buffer());
-
-        let expected_passwd = expect![[r#"
+        let expected_passwd_gen2 = expect![[r#"
             root:x:0:0::/root:/run/current-system/sw/bin/nologin
             initial:x:999:999:::/run/current-system/sw/bin/nologin
             normalo:x:1000:1000:I'm normal I swear:/home/normalo:/bin/zsh
+            system_user:x:5000:5000:System:/var/empty:/bin/false
         "#]];
-        expected_passwd.assert_eq(&passwd_db.to_buffer());
+        expected_passwd_gen2.assert_eq(&passwd_db.to_buffer());
 
-        let expected_shadow = expect![[r#"
-            root:!*:1::::::
-            initial:!*:1::::::
-            normalo:$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A:1::::::
-        "#]];
-        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
+        let system_user_password = if use_stateful_mode {
+            "$y$j9T$system.hash$test"
+        } else {
+            "!*"
+        };
+        let expected_shadow_gen2 = format!(
+            "root:!*:1::::::\ninitial:!*:1::::::\nnormalo:$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A:1::::::\nsystem_user:{}:1::::::",
+            system_user_password
+        );
+        assert_eq!(
+            shadow_db.to_buffer_sorted(&passwd_db).trim(),
+            expected_shadow_gen2
+        );
 
         Ok(())
+    }
+
+    #[test]
+    fn update_users_and_groups_across_generations() -> Result<()> {
+        test_across_generations_generic(false)
+    }
+
+    #[test]
+    fn update_users_and_groups_across_generations_stateful() -> Result<()> {
+        test_across_generations_generic(true)
     }
 }

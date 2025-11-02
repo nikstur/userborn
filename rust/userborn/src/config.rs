@@ -4,7 +4,7 @@ use std::{fs::File, io::Read, path::Path};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
     /// Whether the user is a "normal" or a "system" user
@@ -28,7 +28,7 @@ pub struct User {
     pub password: Password,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Password {
     pub password: Option<String>,
@@ -38,7 +38,7 @@ pub struct Password {
     pub initial_hashed_password: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Group {
     /// Whether the group is a "normal" or a "system" group
     #[serde(default)]
@@ -52,7 +52,7 @@ pub struct Group {
     pub members: BTreeSet<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Config {
     #[serde(default)]
     pub users: Vec<User>,
