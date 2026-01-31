@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (Unreleased)
+## 0.5.0
 
 - Groups that were removed from the config are now emptied (all their users are
   removed from it). This makes the behaviour consistent with the way we treat

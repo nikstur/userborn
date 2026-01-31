@@ -104,6 +104,8 @@
               pkgs.cargo-bloat
               pkgs.cargo-deny
               pkgs.cargo-cyclonedx
+              pkgs.cargo-flamegraph
+              pkgs.hyperfine
             ];
 
             inputsFrom = [ config.packages.userborn ];
