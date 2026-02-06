@@ -123,7 +123,7 @@ impl Group {
     }
 
     pub fn to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer(), 0o644)
+        atomic_write(path, self.to_buffer(), 0o644, None)
     }
 
     pub fn to_buffer(&self) -> String {

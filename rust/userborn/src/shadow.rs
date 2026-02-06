@@ -131,8 +131,14 @@ impl Shadow {
     /// Write the shadow database to a file.
     ///
     /// Sort the entries by their UIDs in the passwd database.
-    pub fn to_file_sorted(&self, passwd: &Passwd, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer_sorted(passwd), 0o000)
+    pub fn to_file_sorted(
+        &self,
+        passwd: &Passwd,
+        path: impl AsRef<Path>,
+        mode: u32,
+        gid: Option<u32>,
+    ) -> Result<()> {
+        atomic_write(path, self.to_buffer_sorted(passwd), mode, gid)
     }
 
     /// Write the shadow database to a string buffer.

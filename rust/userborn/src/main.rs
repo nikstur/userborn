@@ -110,7 +110,9 @@ fn run() -> Result<()> {
     // We should create backup files with an `-` appended to the filename.
     group_db.to_file(group_path)?;
     passwd_db.to_file(passwd_path)?;
-    shadow_db.to_file_sorted(&passwd_db, shadow_path)?;
+
+    let (shadow_mode, shadow_gid) = shadow_file_params(mutable_users, &group_db)?;
+    shadow_db.to_file_sorted(&passwd_db, shadow_path, shadow_mode, shadow_gid)?;
 
     Ok(())
 }
@@ -362,6 +364,20 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
         })?;
     }
     Ok(())
+}
+
+fn shadow_file_params(mutable_users: bool, group_db: &Group) -> Result<(u32, Option<u32>)> {
+    if mutable_users {
+        let gid = group_db
+            .get("shadow")
+            .map(group::Entry::gid)
+            .ok_or(anyhow!(
+                "Mutable users require a 'shadow' group but it was not found"
+            ))?;
+        Ok((0o640, Some(gid)))
+    } else {
+        Ok((0o000, None))
+    }
 }
 
 /// Emit warnings for user entries that use weak password hashing schemes.
@@ -759,5 +775,35 @@ mod tests {
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
         Ok(())
+    }
+
+    #[test]
+    fn shadow_file_params_immutable_mode() -> Result<()> {
+        let group_db = Group::default();
+        let (mode, gid) = shadow_file_params(false, &group_db)?;
+        assert_eq!(mode, 0o000);
+        assert_eq!(gid, None);
+        Ok(())
+    }
+
+    #[test]
+    fn shadow_file_params_mutable_mode_with_shadow_group() -> Result<()> {
+        let mut group_db = Group::default();
+        group_db.insert(&group::Entry::new(
+            "shadow".into(),
+            42,
+            BTreeSet::new(),
+        ))?;
+        let (mode, gid) = shadow_file_params(true, &group_db)?;
+        assert_eq!(mode, 0o640);
+        assert_eq!(gid, Some(42));
+        Ok(())
+    }
+
+    #[test]
+    fn shadow_file_params_mutable_mode_without_shadow_group() {
+        let group_db = Group::default();
+        let result = shadow_file_params(true, &group_db);
+        assert!(result.is_err());
     }
 }
