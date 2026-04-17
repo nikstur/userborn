@@ -105,12 +105,16 @@ fn run() -> Result<()> {
 
     warn_about_weak_password_hashes(&shadow_db);
 
+    // Resolve the `shadow` group from the database we just built so the lookup is independent of
+    // the host's NSS configuration and works on first boot before /etc/group exists.
+    let shadow_gid = group_db.get("shadow").map(group::Entry::gid);
+
     log::debug!("Persisting files to disk...");
     // We should skip this if the files haven't actually changed
     // We should create backup files with an `-` appended to the filename.
     group_db.to_file(group_path)?;
     passwd_db.to_file(passwd_path)?;
-    shadow_db.to_file_sorted(&passwd_db, shadow_path)?;
+    shadow_db.to_file_sorted(&passwd_db, shadow_path, shadow_gid)?;
 
     Ok(())
 }

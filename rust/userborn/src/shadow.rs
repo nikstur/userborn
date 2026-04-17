@@ -131,8 +131,18 @@ impl Shadow {
     /// Write the shadow database to a file.
     ///
     /// Sort the entries by their UIDs in the passwd database.
-    pub fn to_file_sorted(&self, passwd: &Passwd, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer_sorted(passwd), 0o000)
+    ///
+    /// When a `shadow` group exists, the file is written `0o640` owned by that group so a
+    /// setgid-`shadow` `unix_chkpwd(8)` can read it. Otherwise it falls back to `0o000`, readable
+    /// only via `CAP_DAC_OVERRIDE`.
+    pub fn to_file_sorted(
+        &self,
+        passwd: &Passwd,
+        path: impl AsRef<Path>,
+        shadow_gid: Option<u32>,
+    ) -> Result<()> {
+        let mode = if shadow_gid.is_some() { 0o640 } else { 0o000 };
+        atomic_write(path, self.to_buffer_sorted(passwd), mode, shadow_gid)
     }
 
     /// Write the shadow database to a string buffer.

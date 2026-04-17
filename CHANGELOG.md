@@ -5,6 +5,10 @@
 - Groups that were removed from the config are now emptied (all their users are
   removed from it). This makes the behaviour consistent with the way we treat
   users. They're never removed (to avoid GID re-use) but effectively disabled.
+- `/etc/shadow` is now written `0640 root:shadow` when a `shadow` group is
+  present in the config (otherwise `0000` as before). This matches NixOS's
+  `update-users-groups.pl` and Debian, and lets `unix_chkpwd(8)` run setgid
+  `shadow` instead of setuid root.
 - Mutable users are now fully supported. Previously, Userborn would disable
   all users and drain all groups that were not in it's current config. Now, if
   mutable users are enabled via `USERBORN_MUTABLE_USERS`, only users/groups

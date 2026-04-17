@@ -1,4 +1,9 @@
-use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
+use std::{
+    fs,
+    io::Write,
+    os::unix::fs::{chown, OpenOptionsExt},
+    path::Path,
+};
 
 use anyhow::{Context, Result};
 
@@ -8,7 +13,15 @@ use anyhow::{Context, Result};
 /// its actual path.
 ///
 /// This increases the atomicity of the write.
-pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32) -> Result<()> {
+///
+/// If `gid` is set, the temporary file is `chown`ed to that group before the rename so the
+/// final path never appears with a different group than requested.
+pub fn atomic_write(
+    path: impl AsRef<Path>,
+    buffer: impl AsRef<[u8]>,
+    mode: u32,
+    gid: Option<u32>,
+) -> Result<()> {
     let mut i = 0;
 
     let (mut file, tmp_path) = loop {
@@ -39,6 +52,11 @@ pub fn atomic_write(path: impl AsRef<Path>, buffer: impl AsRef<[u8]>, mode: u32)
         .with_context(|| format!("Failed to write to {}", tmp_path.display()))?;
     file.sync_all()
         .with_context(|| format!("Failed to sync the temporary file {}", tmp_path.display()))?;
+
+    if let Some(gid) = gid {
+        chown(&tmp_path, None, Some(gid))
+            .with_context(|| format!("Failed to chown {} to gid {gid}", tmp_path.display()))?;
+    }
 
     fs::rename(&tmp_path, &path).with_context(|| {
         format!(
