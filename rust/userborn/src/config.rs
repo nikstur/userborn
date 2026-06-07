@@ -7,6 +7,23 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::subid;
+
+#[derive(Deserialize, Debug, Clone, Copy)]
+pub struct SubIdRange {
+    pub start: u64,
+    pub count: u64,
+}
+
+impl From<SubIdRange> for subid::Range {
+    fn from(r: SubIdRange) -> Self {
+        Self {
+            start: r.start,
+            count: r.count,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
@@ -27,8 +44,23 @@ pub struct User {
     pub home: Option<String>,
     /// The shell of the user
     pub shell: Option<String>,
+    /// Whether to automatically allocate a subordinate UID/GID range for this user.
+    #[serde(default)]
+    pub auto_sub_id_range: bool,
+    /// Explicit subordinate UID ranges for this user.
+    #[serde(default)]
+    pub sub_uid_ranges: Vec<SubIdRange>,
+    /// Explicit subordinate GID ranges for this user.
+    #[serde(default)]
+    pub sub_gid_ranges: Vec<SubIdRange>,
     #[serde(flatten)]
     pub password: Password,
+}
+
+impl User {
+    pub fn has_sub_id_config(&self) -> bool {
+        self.auto_sub_id_range || !self.sub_uid_ranges.is_empty() || !self.sub_gid_ranges.is_empty()
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -56,11 +88,30 @@ pub struct Group {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default)]
     pub users: Vec<User>,
     #[serde(default)]
     pub groups: Vec<Group>,
+    /// Lowest id at which automatically allocated subordinate id ranges start.
+    #[serde(default = "default_sub_id_base")]
+    pub sub_id_auto_base: u64,
+    /// Width of an automatically allocated subordinate id range.
+    #[serde(default = "default_sub_id_count")]
+    pub sub_id_auto_count: u64,
+    /// Refuse to write `/etc/sub{u,g}id` when ranges overlap across owners instead of merely
+    /// warning.
+    #[serde(default)]
+    pub strict_sub_id_overlap: bool,
+}
+
+fn default_sub_id_base() -> u64 {
+    100_000
+}
+
+fn default_sub_id_count() -> u64 {
+    65_536
 }
 
 impl Config {
@@ -102,7 +153,13 @@ mod tests {
                 },
                 {
                     "name": "barebones",
-                }
+                },
+                {
+                    "isNormal": true,
+                    "name": "hassubids",
+                    "autoSubIdRange": true,
+                    "subUidRanges": [ { "start": 200_000, "count": 131_072 } ],
+                },
             ],
             "groups": [
                 {

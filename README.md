@@ -11,6 +11,7 @@ Declaratively bear (manage) Linux users and groups.
 - Simple JSON config format.
 - Create per-user groups if no explicit primary group is provided.
 - Warn about insecure password hashing schemes.
+- Manage `/etc/subuid` and `/etc/subgid` for rootless containers.
 
 ### Where does it run?
 
@@ -33,6 +34,9 @@ services.userborn.enable = true;
 - Never deletes a user or group, only disables them when they are not present
   in the config anymore.
 - Never changes the UID of an existing user or the GID of an existing group.
+- Never removes a subordinate UID/GID range from `/etc/sub{u,g}id` for an
+  owner that no longer requests one, so the range cannot be reassigned to a
+  different owner.
 - The file mode, uid, and gid of the `/etc/{group,passwd,shadow}` files is
   never changed. If the files already exist before Userborn runs for the first
   time it will retain these values.
@@ -146,7 +150,30 @@ Userborn:
 ### Limitations
 
 - Currently doesn't support group passwords (and thus also doesn't support `/etc/gshadow`).
-- Doesn't handle SUBUID/SUBGIDs.
+
+## Subordinate UID/GID Ranges
+
+Userborn writes `/etc/subuid` and `/etc/subgid` so that tools like
+`newuidmap`/`newgidmap` (used by rootless Podman, Docker, and similar) work
+out of the box.
+
+Per user you can either:
+
+- list explicit ranges via `subUidRanges` / `subGidRanges`, which are written
+  verbatim, or
+- set `autoSubIdRange: true` to have Userborn allocate a single
+  `subIdAutoCount`-wide range (default 65536) at or above `subIdAutoBase`
+  (default 100000) that does not overlap any other owner's ranges.
+
+Auto-allocated ranges are stable: once written they are read back from
+`/etc/sub{u,g}id` on subsequent runs and never moved, even if other ranges
+change around them. As with UIDs, entries for owners that disappear from the
+config are kept so the range cannot be reused by a different owner.
+
+If the resulting set of ranges overlaps across distinct owners (which can
+only happen via explicit configuration or pre-existing on-disk state),
+Userborn logs a warning. Set `strictSubIdOverlap: true` at the top level of
+the config to turn this into a hard error so an overlap never reaches disk.
 
 ## Replacing `system.activationScripts`
 
