@@ -43,7 +43,7 @@ impl Entry {
     pub fn update(&mut self, password: Option<String>) {
         if let Some(password) = password {
             if self.password != password {
-                log::info!("Updating password of user {}...", self.name,);
+                log::info!("Updating password of user {}...", self.name);
                 self.password = password;
             }
         }
