@@ -2,100 +2,94 @@
   description = "Declaratively bear (manage) Linux users and groups";
 
   inputs = {
-
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    systems.url = "github:nix-systems/default";
-
-    flake-parts = {
-      url = "github:hercules-ci/flake-parts";
-      inputs.nixpkgs-lib.follows = "nixpkgs";
-    };
 
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
     };
 
-    pre-commit-hooks-nix = {
+    pre-commit = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs = {
         nixpkgs.follows = "nixpkgs";
         flake-compat.follows = "flake-compat";
       };
     };
-
   };
 
   outputs =
     inputs@{
-      flake-parts,
-      systems,
+      self,
+      nixpkgs,
       ...
     }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = import systems;
+    let
+      eachSystem = nixpkgs.lib.genAttrs [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+    in
+    {
+      packages = eachSystem (
+        system:
+        (import ./nix/packages { pkgs = nixpkgs.legacyPackages.${system}; })
+        // {
+          default = self.packages.${system}.userborn;
+        }
+      );
 
-      imports = [ inputs.pre-commit-hooks-nix.flakeModule ];
-
-      perSystem =
+      checks = eachSystem (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          overlayedPkgs = pkgs.extend (_final: _prev: { inherit (self.packages.${system}) userborn; });
+        in
         {
-          config,
-          pkgs,
-          ...
-        }:
-        {
-          packages = (import ./nix/packages { inherit pkgs; }) // {
-            default = config.packages.userborn;
-          };
-
-          checks =
-            let
-              overlayedPkgs = pkgs.extend (_final: _prev: { inherit (config.packages) userborn; });
-            in
-            {
-              clippy = config.packages.userborn.overrideAttrs (
-                _: previousAttrs: {
-                  pname = previousAttrs.pname + "-clippy";
-                  nativeCheckInputs = (previousAttrs.nativeCheckInputs or [ ]) ++ [ pkgs.clippy ];
-                  checkPhase = "cargo clippy";
-                }
-              );
-              rustfmt = config.packages.userborn.overrideAttrs (
-                _: previousAttrs: {
-                  pname = previousAttrs.pname + "-rustfmt";
-                  nativeCheckInputs = (previousAttrs.nativeCheckInputs or [ ]) ++ [ pkgs.rustfmt ];
-                  checkPhase = "cargo fmt --check";
-                }
-              );
-              inherit (overlayedPkgs.nixosTests)
-                userborn
-                userborn-mutable-users
-                userborn-mutable-etc
-                userborn-immutable-users
-                userborn-immutable-etc
-                ;
-            };
-
-          pre-commit = {
-            check.enable = true;
-
-            settings = {
-              hooks = {
-                nixfmt.enable = true;
-                deadnix.enable = true;
-                statix.enable = true;
-              };
+          clippy = self.packages.${system}.userborn.overrideAttrs (
+            _: previousAttrs: {
+              pname = previousAttrs.pname + "-clippy";
+              nativeCheckInputs = (previousAttrs.nativeCheckInputs or [ ]) ++ [ pkgs.clippy ];
+              checkPhase = "cargo clippy";
+            }
+          );
+          rustfmt = self.packages.${system}.userborn.overrideAttrs (
+            _: previousAttrs: {
+              pname = previousAttrs.pname + "-rustfmt";
+              nativeCheckInputs = (previousAttrs.nativeCheckInputs or [ ]) ++ [ pkgs.rustfmt ];
+              checkPhase = "cargo fmt --check";
+            }
+          );
+          pre-commit = inputs.pre-commit.lib.${system}.run {
+            src = ./.;
+            hooks = {
+              nixfmt.enable = true;
+              deadnix.enable = true;
+              statix.enable = true;
             };
           };
+          inherit (overlayedPkgs.nixosTests)
+            userborn
+            userborn-mutable-users
+            userborn-mutable-etc
+            userborn-immutable-users
+            userborn-immutable-etc
+            ;
+        }
+      );
 
-          devShells.default = pkgs.mkShell {
+      devShells = eachSystem (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
             shellHook = ''
-              ${config.pre-commit.shellHook}
+              ${self.checks.${system}.pre-commit.shellHook}
             '';
 
             packages = [
-              pkgs.niv
               pkgs.nixfmt
               pkgs.clippy
               pkgs.rustfmt
@@ -108,11 +102,12 @@
               pkgs.hyperfine
             ];
 
-            inputsFrom = [ config.packages.userborn ];
+            inputsFrom = [ self.packages.${system}.userborn ];
 
             RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
           };
+        }
+      );
 
-        };
     };
 }
