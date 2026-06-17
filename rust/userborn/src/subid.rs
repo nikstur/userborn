@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write as _};
 
 use anyhow::{Result, bail};
+use serde::Deserialize;
 
 use crate::FromBuffer;
 
@@ -10,10 +11,22 @@ use crate::FromBuffer;
 /// various userspace tools, so the auto allocator never hands out a range that extends past it.
 const SUBID_MAX: u64 = 0x8000_0000;
 
+/// Lowest id at which automatically allocated subordinate id ranges start.
+///
+/// Matches shadow's `SUB_UID_MIN` default in `login.defs`.
+pub const AUTO_BASE: u64 = 100_000;
+
+/// Width of an automatically allocated subordinate id range.
+///
+/// Matches shadow's `SUB_UID_COUNT` default in `login.defs`.
+pub const AUTO_COUNT: u64 = 65_536;
+
 /// A half-open subordinate id interval `[start, start + count)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
+    /// First id in the range.
     pub start: u64,
+    /// Number of consecutive ids in the range.
     pub count: u64,
 }
 
@@ -64,9 +77,9 @@ impl SubIds {
     /// --add-subgids`. Looking in both lets us restore a range that survived in only one
     /// file instead of allocating a fresh one and breaking existing containers. If both are
     /// present but disagree we warn and prefer `subuid`.
-    pub fn auto_range(&self, name: &str, count: u64) -> Option<Range> {
-        let u = self.uid.auto_range(name, count);
-        let g = self.gid.auto_range(name, count);
+    pub fn auto_range(&self, name: &str) -> Option<Range> {
+        let u = self.uid.auto_range(name);
+        let g = self.gid.auto_range(name);
         if u.is_some() && g.is_some() && u != g {
             log::warn!(
                 "Auto subordinate id range for {name} differs between subuid and subgid. \
@@ -127,9 +140,12 @@ impl SubId {
         }
     }
 
-    /// Find an existing auto-style range (one with exactly the expected count) for `name`.
-    pub fn auto_range(&self, name: &str, count: u64) -> Option<Range> {
-        self.ranges(name).iter().find(|r| r.count == count).copied()
+    /// Find an existing auto-style range (one with exactly [`AUTO_COUNT`] width) for `name`.
+    pub fn auto_range(&self, name: &str) -> Option<Range> {
+        self.ranges(name)
+            .iter()
+            .find(|r| r.count == AUTO_COUNT)
+            .copied()
     }
 
     /// All `(owner, range)` pairs across the database.

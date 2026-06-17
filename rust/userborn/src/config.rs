@@ -9,21 +9,6 @@ use serde::Deserialize;
 
 use crate::subid;
 
-#[derive(Deserialize, Debug, Clone, Copy)]
-pub struct SubIdRange {
-    pub start: u64,
-    pub count: u64,
-}
-
-impl From<SubIdRange> for subid::Range {
-    fn from(r: SubIdRange) -> Self {
-        Self {
-            start: r.start,
-            count: r.count,
-        }
-    }
-}
-
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
@@ -49,10 +34,10 @@ pub struct User {
     pub auto_sub_id_range: bool,
     /// Explicit subordinate UID ranges for this user.
     #[serde(default)]
-    pub sub_uid_ranges: Vec<SubIdRange>,
+    pub sub_uid_ranges: Vec<subid::Range>,
     /// Explicit subordinate GID ranges for this user.
     #[serde(default)]
-    pub sub_gid_ranges: Vec<SubIdRange>,
+    pub sub_gid_ranges: Vec<subid::Range>,
     #[serde(flatten)]
     pub password: Password,
 }
@@ -94,24 +79,6 @@ pub struct Config {
     pub users: Vec<User>,
     #[serde(default)]
     pub groups: Vec<Group>,
-    /// Lowest id at which automatically allocated subordinate id ranges start.
-    #[serde(default = "default_sub_id_base")]
-    pub sub_id_auto_base: u64,
-    /// Width of an automatically allocated subordinate id range.
-    #[serde(default = "default_sub_id_count")]
-    pub sub_id_auto_count: u64,
-    /// Refuse to write `/etc/sub{u,g}id` when ranges overlap across owners instead of merely
-    /// warning.
-    #[serde(default)]
-    pub strict_sub_id_overlap: bool,
-}
-
-fn default_sub_id_base() -> u64 {
-    100_000
-}
-
-fn default_sub_id_count() -> u64 {
-    65_536
 }
 
 impl Config {

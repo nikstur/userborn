@@ -15,8 +15,7 @@
   `autoSubIdRange` allocates a stable, non-overlapping range that is
   preserved across generations. Like UIDs and GIDs, existing subordinate id
   entries are never removed so a range cannot be reassigned to a different
-  owner. Cross-owner overlap is logged as a warning, or refused outright
-  when `strictSubIdOverlap` is set in the config.
+  owner. Cross-owner overlap is refused outright.
 
 ## 0.5.0
 

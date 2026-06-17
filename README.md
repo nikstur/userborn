@@ -161,9 +161,8 @@ Per user you can either:
 
 - list explicit ranges via `subUidRanges` / `subGidRanges`, which are written
   verbatim, or
-- set `autoSubIdRange: true` to have Userborn allocate a single
-  `subIdAutoCount`-wide range (default 65536) at or above `subIdAutoBase`
-  (default 100000) that does not overlap any other owner's ranges.
+- set `autoSubIdRange: true` to have Userborn allocate a single 65536-wide
+  range at or above 100000 that does not overlap any other owner's ranges.
 
 Auto-allocated ranges are stable: once written they are read back from
 `/etc/sub{u,g}id` on subsequent runs and never moved, even if other ranges
@@ -172,8 +171,8 @@ config are kept so the range cannot be reused by a different owner.
 
 If the resulting set of ranges overlaps across distinct owners (which can
 only happen via explicit configuration or pre-existing on-disk state),
-Userborn logs a warning. Set `strictSubIdOverlap: true` at the top level of
-the config to turn this into a hard error so an overlap never reaches disk.
+Userborn refuses to write `/etc/sub{u,g}id` and exits with an error. The
+other databases (`passwd`, `group`, `shadow`) are still written.
 
 ## Replacing `system.activationScripts`
 
