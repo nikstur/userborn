@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// Allocate a new UID/GID.
 ///

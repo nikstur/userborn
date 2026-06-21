@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::{fs::atomic_write, id};
 
@@ -54,45 +54,45 @@ impl Entry {
         directory: Option<String>,
         shell: Option<String>,
     ) {
-        if let Some(gid) = gid {
-            if self.gid != gid {
-                log::info!(
-                    "Updating primary group (GID) of user {} from {} to {gid}...",
-                    self.name,
-                    self.gid,
-                );
-                self.gid = gid;
-            }
+        if let Some(gid) = gid
+            && self.gid != gid
+        {
+            log::info!(
+                "Updating primary group (GID) of user {} from {} to {gid}...",
+                self.name,
+                self.gid,
+            );
+            self.gid = gid;
         }
-        if let Some(gecos) = gecos {
-            if self.gecos != gecos {
-                log::info!(
-                    "Updating gecos of user {} from {} to {gecos}...",
-                    self.name,
-                    self.gecos,
-                );
-                self.gecos = gecos;
-            }
+        if let Some(gecos) = gecos
+            && self.gecos != gecos
+        {
+            log::info!(
+                "Updating gecos of user {} from {} to {gecos}...",
+                self.name,
+                self.gecos,
+            );
+            self.gecos = gecos;
         }
-        if let Some(directory) = directory {
-            if self.directory != directory {
-                log::info!(
-                    "Updating home directory of user {} from {} to {directory}...",
-                    self.name,
-                    self.directory,
-                );
-                self.directory = directory;
-            }
+        if let Some(directory) = directory
+            && self.directory != directory
+        {
+            log::info!(
+                "Updating home directory of user {} from {} to {directory}...",
+                self.name,
+                self.directory,
+            );
+            self.directory = directory;
         }
-        if let Some(shell) = shell {
-            if self.shell != shell {
-                log::info!(
-                    "Updating shell of user {} from {} to {shell}...",
-                    self.name,
-                    self.shell,
-                );
-                self.shell = shell;
-            }
+        if let Some(shell) = shell
+            && self.shell != shell
+        {
+            log::info!(
+                "Updating shell of user {} from {} to {shell}...",
+                self.name,
+                self.shell,
+            );
+            self.shell = shell;
         }
     }
 

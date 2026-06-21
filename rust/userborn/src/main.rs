@@ -8,7 +8,7 @@ mod shadow;
 
 use std::{collections::BTreeSet, io::Write, process::ExitCode};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::{Level, LevelFilter};
 
 use config::Config;
@@ -368,7 +368,10 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
 fn warn_about_weak_password_hashes(shadow_db: &Shadow) {
     for entry in shadow_db.entries() {
         if !entry.uses_secure_hash() {
-            log::warn!("User {} uses an insecure password hashing scheme. Update their password as soon as possible.", entry.name());
+            log::warn!(
+                "User {} uses an insecure password hashing scheme. Update their password as soon as possible.",
+                entry.name()
+            );
         }
     }
 }
