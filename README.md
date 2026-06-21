@@ -33,6 +33,9 @@ services.userborn.enable = true;
 - Never deletes a user or group, only disables them when they are not present
   in the config anymore.
 - Never changes the UID of an existing user or the GID of an existing group.
+- The file mode, uid, and gid of the `/etc/{group,passwd,shadow}` files is
+  never changed. If the files already exist before Userborn runs for the first
+  time it will retain these values.
 
 This prohibits UID/GID re-use which is a security issue. The danger of UID/GID
 re-use is best illustrated by an example. Imagine the following scenario:
