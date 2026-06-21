@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::{fs::atomic_write, passwd::Passwd};
 
@@ -41,11 +41,11 @@ impl Entry {
 
     /// Update an /etc/shadow entry.
     pub fn update(&mut self, password: Option<String>) {
-        if let Some(password) = password {
-            if self.password != password {
-                log::info!("Updating password of user {}...", self.name);
-                self.password = password;
-            }
+        if let Some(password) = password
+            && self.password != password
+        {
+            log::info!("Updating password of user {}...", self.name);
+            self.password = password;
         }
     }
 
@@ -267,14 +267,29 @@ mod tests {
     #[test]
     fn identify_secure_hashes() {
         let hashes = [
-            ("$y$j9T$igJW2OgjsnJz4.COTGH0G1$TyS4WDmoXAGpE6z1iOl6ndQTKFgSsD8DIbC.mMdVtNC", true), // yescrypt
-            ("$gy$j9T$IBb6Ykr9v.cfTkUvculya.$H/vfFxCd69T1CPtm0pkQT3VvzPSOTfUdo76Vf3hNqe2", true), // gost-yescrypt
-            ("$7$CU..../....9sY.m8opwNYwaSsudXYhz1$7Ryf.TnjOFvBmzYvt7LLj30W3v48Ow9JpUMx3cA6x.5", true), // scrypt
-            ("$2b$05$gCjYP/VsL/uwEc3HSNNSWepVe1YXminE0USq/9cLCAsapoLYfBgOy", true), // bcrypt
-            ("$6$f9XzfdtqbfTpRNp6$j2731aaJDfI.SiStmiKkxC.zFbeeb9iBp.e4JHJ1PRAg0bgJPzklIcN8ZHquSzTtGYXxX/YgnZb3L655us6lV0", false), // sha512crypt
-            ("!", true), // Not a password
-            ("!*", true), // Not a password
-            ("*", true), // Not a password
+            (
+                "$y$j9T$igJW2OgjsnJz4.COTGH0G1$TyS4WDmoXAGpE6z1iOl6ndQTKFgSsD8DIbC.mMdVtNC",
+                true,
+            ), // yescrypt
+            (
+                "$gy$j9T$IBb6Ykr9v.cfTkUvculya.$H/vfFxCd69T1CPtm0pkQT3VvzPSOTfUdo76Vf3hNqe2",
+                true,
+            ), // gost-yescrypt
+            (
+                "$7$CU..../....9sY.m8opwNYwaSsudXYhz1$7Ryf.TnjOFvBmzYvt7LLj30W3v48Ow9JpUMx3cA6x.5",
+                true,
+            ), // scrypt
+            (
+                "$2b$05$gCjYP/VsL/uwEc3HSNNSWepVe1YXminE0USq/9cLCAsapoLYfBgOy",
+                true,
+            ), // bcrypt
+            (
+                "$6$f9XzfdtqbfTpRNp6$j2731aaJDfI.SiStmiKkxC.zFbeeb9iBp.e4JHJ1PRAg0bgJPzklIcN8ZHquSzTtGYXxX/YgnZb3L655us6lV0",
+                false,
+            ), // sha512crypt
+            ("!", true),          // Not a password
+            ("!*", true),         // Not a password
+            ("*", true),          // Not a password
             ("!undefined", true), // Not a password
         ];
 

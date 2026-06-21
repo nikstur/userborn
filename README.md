@@ -86,10 +86,6 @@ environment variables.
 
 ### Environment Variables
 
-- `USERBORN_NO_LOGIN_PATH`: Set this to the path of the `nologin` binary on
-  your system. This path is used when the user config doesn't specify a
-  `shell`. If this environment variable is set, its value overrides
-  `USERBORN_NO_LOGIN_DEFAULT_PATH`.
 - `USERBORN_MUTABLE_USERS`: Set this to the string `true` if you want to enable
   mutable users.
 - `USERBORN_PREVIOUS_CONFIG`: Set this to the path of the previous Userborn

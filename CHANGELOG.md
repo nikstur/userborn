@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (Unreleased)
+
+- Removed the ability to configure the path to the `nologin` binary during
+  runtime via the env variable `USERBORN_NO_LOGIN_PATH`. Instead, configure the
+  path during compilation of Userborn via `USERBORN_NO_LOGIN_DEFAULT_PATH`.
+
 ## 0.5.0
 
 - Groups that were removed from the config are now emptied (all their users are

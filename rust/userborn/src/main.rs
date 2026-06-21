@@ -8,7 +8,7 @@ mod shadow;
 
 use std::{collections::BTreeSet, io::Write, process::ExitCode};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::{Level, LevelFilter};
 
 use config::Config;
@@ -19,8 +19,7 @@ use shadow::Shadow;
 
 /// Fallback path to the nologin binary.
 ///
-/// This is used when `USERBORN_NO_LOGIN_PATH` is not set during runtime and
-/// `USERBORN_NO_LOGIN_DEFAULT_PATH` hasn't been set during compilation.
+/// This is used when `USERBORN_NO_LOGIN_DEFAULT_PATH` hasn't been set during compilation.
 const NO_LOGIN_FALLBACK: &str = "/run/current-system/sw/bin/nologin";
 /// Default path to the nologin binary.
 ///
@@ -258,10 +257,10 @@ fn create_user(
         gid,
         user_config.description.clone().unwrap_or_default(),
         user_config.home.clone().unwrap_or_default(),
-        user_config.shell.clone().unwrap_or(
-            std::env::var("USERBORN_NO_LOGIN_PATH")
-                .unwrap_or(NO_LOGIN_DEFAULT.unwrap_or(NO_LOGIN_FALLBACK).into()),
-        ),
+        user_config
+            .shell
+            .clone()
+            .unwrap_or(NO_LOGIN_DEFAULT.unwrap_or(NO_LOGIN_FALLBACK).into()),
     );
 
     let description = new_entry.describe();
@@ -368,7 +367,10 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
 fn warn_about_weak_password_hashes(shadow_db: &Shadow) {
     for entry in shadow_db.entries() {
         if !entry.uses_secure_hash() {
-            log::warn!("User {} uses an insecure password hashing scheme. Update their password as soon as possible.", entry.name());
+            log::warn!(
+                "User {} uses an insecure password hashing scheme. Update their password as soon as possible.",
+                entry.name()
+            );
         }
     }
 }
@@ -496,9 +498,6 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn update_users_and_groups_across_generations_mutable() -> Result<()> {
-        // Explicitly set this because the expected values depend on this.
-        std::env::set_var("USERBORN_NO_LOGIN_PATH", NO_LOGIN_FALLBACK);
-
         let mut group_db = Group::default();
         let mut passwd_db = Passwd::default();
         let mut shadow_db = Shadow::default();
@@ -631,9 +630,6 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn update_users_and_groups_across_generations() -> Result<()> {
-        // Explicitly set this because the expected values depend on this.
-        std::env::set_var("USERBORN_NO_LOGIN_PATH", NO_LOGIN_FALLBACK);
-
         let mut group_db = Group::default();
         let mut passwd_db = Passwd::default();
         let mut shadow_db = Shadow::default();
