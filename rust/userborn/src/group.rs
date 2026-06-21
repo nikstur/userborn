@@ -77,6 +77,10 @@ impl Entry {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn members(&self) -> &BTreeSet<String> {
+        &self.user_list
+    }
 }
 
 /// Split a string containing group members separated by `,` into a list.
