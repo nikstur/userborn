@@ -1,12 +1,8 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    path::Path,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
-use crate::{fs::atomic_write, id};
+use crate::{FromBuffer, id};
 
 #[derive(Clone)]
 pub struct Entry {
@@ -101,31 +97,6 @@ pub struct Group {
 }
 
 impl Group {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
-
-        Ok(Self::from_buffer(&file))
-    }
-
-    fn from_buffer(s: &str) -> Self {
-        let mut entries = BTreeMap::new();
-        let mut gids = BTreeMap::new();
-        for line in s.lines() {
-            if let Some(e) = Entry::from_line(line) {
-                entries.insert(e.gid, e.clone());
-                gids.insert(e.name.clone(), e.gid);
-            } else {
-                log::warn!("Skipping group line because it cannot be parsed: {line}.");
-            }
-        }
-        Self { entries, gids }
-    }
-
-    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer(), 0o644)
-    }
-
     pub fn to_buffer(&self) -> String {
         let mut s = String::new();
         for entry in self.entries.values() {
@@ -174,6 +145,22 @@ impl Group {
 
     pub fn entries_mut(&mut self) -> impl IntoIterator<Item = &mut Entry> {
         self.entries.values_mut()
+    }
+}
+
+impl FromBuffer for Group {
+    fn from_buffer(s: &str) -> Self {
+        let mut entries = BTreeMap::new();
+        let mut gids = BTreeMap::new();
+        for line in s.lines() {
+            if let Some(e) = Entry::from_line(line) {
+                entries.insert(e.gid, e.clone());
+                gids.insert(e.name.clone(), e.gid);
+            } else {
+                log::warn!("Skipping group line because it cannot be parsed: {line}.");
+            }
+        }
+        Self { entries, gids }
     }
 }
 

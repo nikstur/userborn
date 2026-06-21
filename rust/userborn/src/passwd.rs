@@ -1,12 +1,8 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    path::Path,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
-use crate::{fs::atomic_write, id};
+use crate::{FromBuffer, id};
 
 /// Password for /etc/passwd indicating that the actual password is stored in /etc/shadow.
 const PASSWORD_IN_SHADOW: &str = "x";
@@ -147,31 +143,6 @@ pub struct Passwd {
 }
 
 impl Passwd {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
-
-        Ok(Self::from_buffer(&file))
-    }
-
-    pub fn from_buffer(s: &str) -> Self {
-        let mut entries = BTreeMap::new();
-        let mut uids = BTreeMap::new();
-        for line in s.lines() {
-            if let Some(e) = Entry::from_line(line) {
-                entries.insert(e.uid, e.clone());
-                uids.insert(e.name.clone(), e.uid);
-            } else {
-                log::warn!("Skipping passwd line because it cannot be parsed: {line}.");
-            }
-        }
-        Self { entries, uids }
-    }
-
-    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer(), 0o644)
-    }
-
     pub fn to_buffer(&self) -> String {
         let mut s = String::new();
         for entry in self.entries.values() {
@@ -214,6 +185,22 @@ impl Passwd {
 
     pub fn entries(&self) -> Vec<&Entry> {
         self.entries.values().collect()
+    }
+}
+
+impl FromBuffer for Passwd {
+    fn from_buffer(s: &str) -> Self {
+        let mut entries = BTreeMap::new();
+        let mut uids = BTreeMap::new();
+        for line in s.lines() {
+            if let Some(e) = Entry::from_line(line) {
+                entries.insert(e.uid, e.clone());
+                uids.insert(e.name.clone(), e.uid);
+            } else {
+                log::warn!("Skipping passwd line because it cannot be parsed: {line}.");
+            }
+        }
+        Self { entries, uids }
     }
 }
 

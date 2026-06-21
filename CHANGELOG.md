@@ -5,6 +5,11 @@
 - Removed the ability to configure the path to the `nologin` binary during
   runtime via the env variable `USERBORN_NO_LOGIN_PATH`. Instead, configure the
   path during compilation of Userborn via `USERBORN_NO_LOGIN_DEFAULT_PATH`.
+- The file mode, uid, and gid of /etc/{group,passwd,shadow} are now retained if
+  the files already exist. If the files don't exist, they are created with the
+  same permissions as before. This enables setups where `/etc/shadow` is owned
+  by the `shadow` group with mode `640` and `unix_chkpwd` only has the `setgid`
+  bit. Most notably, this is the default on Debian/Ubuntu derivatives.
 
 ## 0.5.0
 

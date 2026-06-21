@@ -6,16 +6,35 @@ mod passwd;
 mod password;
 mod shadow;
 
-use std::{collections::BTreeSet, io::Write, process::ExitCode};
+use std::{collections::BTreeSet, io::Write, path::Path, process::ExitCode};
 
 use anyhow::{Context, Result, anyhow};
 use log::{Level, LevelFilter};
 
 use config::Config;
+use fs::{Rights, atomic_write, read_to_string};
 use group::Group;
 use passwd::Passwd;
 use password::HashedPassword;
 use shadow::Shadow;
+
+trait FromBuffer {
+    fn from_buffer(buf: &str) -> Self;
+}
+
+/// Read a file and its rights.
+///
+/// If the file doesn't exist, return the default representation of T alongside the rights with a
+/// provided default mode.
+fn read_or_default<T>(path: impl AsRef<Path>, default_mode: u32) -> (T, Rights)
+where
+    T: FromBuffer + Default,
+{
+    match read_to_string(path) {
+        Ok((buf, rights)) => (T::from_buffer(&buf), rights),
+        Err(_) => (T::default(), Rights::from_mode(default_mode)),
+    }
+}
 
 /// Fallback path to the nologin binary.
 ///
@@ -90,9 +109,9 @@ fn run() -> Result<()> {
     let passwd_path = format!("{directory}/passwd");
     let shadow_path = format!("{directory}/shadow");
 
-    let mut group_db = Group::from_file(&group_path).unwrap_or_default();
-    let mut passwd_db = Passwd::from_file(&passwd_path).unwrap_or_default();
-    let mut shadow_db = Shadow::from_file(&shadow_path).unwrap_or_default();
+    let (mut group_db, group_rights) = read_or_default::<Group>(&group_path, 0o644);
+    let (mut passwd_db, passwd_rights) = read_or_default::<Passwd>(&passwd_path, 0o644);
+    let (mut shadow_db, shadow_rights) = read_or_default::<Shadow>(&shadow_path, 0o000);
 
     update_users_and_groups(
         &config,
@@ -107,9 +126,13 @@ fn run() -> Result<()> {
     log::debug!("Persisting files to disk...");
     // We should skip this if the files haven't actually changed
     // We should create backup files with an `-` appended to the filename.
-    group_db.to_file(group_path)?;
-    passwd_db.to_file(passwd_path)?;
-    shadow_db.to_file_sorted(&passwd_db, shadow_path)?;
+    atomic_write(group_path, group_db.to_buffer(), &group_rights)?;
+    atomic_write(passwd_path, passwd_db.to_buffer(), &passwd_rights)?;
+    atomic_write(
+        shadow_path,
+        shadow_db.to_buffer_sorted(&passwd_db),
+        &shadow_rights,
+    )?;
 
     Ok(())
 }

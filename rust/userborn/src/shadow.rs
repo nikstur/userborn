@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::collections::BTreeMap;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
-use crate::{fs::atomic_write, passwd::Passwd};
+use crate::{FromBuffer, passwd::Passwd};
 
 /// A locked and invalid password.
 const PASSWORD_LOCKED_AND_INVALID: &str = "!*";
@@ -109,32 +109,6 @@ impl Entry {
 pub struct Shadow(BTreeMap<String, Entry>);
 
 impl Shadow {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let file = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read {}.", path.as_ref().display()))?;
-
-        Ok(Self::from_buffer(&file))
-    }
-
-    fn from_buffer(s: &str) -> Self {
-        let mut entries = BTreeMap::new();
-        for line in s.lines() {
-            if let Some(e) = Entry::from_line(line) {
-                entries.insert(e.name.clone(), e.clone());
-            } else {
-                log::warn!("Skipping shadow line because it cannot be parsed: {line}.");
-            }
-        }
-        Self(entries)
-    }
-
-    /// Write the shadow database to a file.
-    ///
-    /// Sort the entries by their UIDs in the passwd database.
-    pub fn to_file_sorted(&self, passwd: &Passwd, path: impl AsRef<Path>) -> Result<()> {
-        atomic_write(path, self.to_buffer_sorted(passwd), 0o000)
-    }
-
     /// Write the shadow database to a string buffer.
     ///
     /// Sort the entries by their UIDs in the passwd database.
@@ -179,6 +153,20 @@ impl Shadow {
 
     pub fn entries_mut(&mut self) -> impl IntoIterator<Item = &mut Entry> {
         self.0.values_mut()
+    }
+}
+
+impl FromBuffer for Shadow {
+    fn from_buffer(s: &str) -> Self {
+        let mut entries = BTreeMap::new();
+        for line in s.lines() {
+            if let Some(e) = Entry::from_line(line) {
+                entries.insert(e.name.clone(), e.clone());
+            } else {
+                log::warn!("Skipping shadow line because it cannot be parsed: {line}.");
+            }
+        }
+        Self(entries)
     }
 }
 
