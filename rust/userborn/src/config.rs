@@ -7,6 +7,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::subid;
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
@@ -27,8 +29,23 @@ pub struct User {
     pub home: Option<String>,
     /// The shell of the user
     pub shell: Option<String>,
+    /// Whether to automatically allocate a subordinate UID/GID range for this user.
+    #[serde(default)]
+    pub auto_sub_id_range: bool,
+    /// Explicit subordinate UID ranges for this user.
+    #[serde(default)]
+    pub sub_uid_ranges: Vec<subid::Range>,
+    /// Explicit subordinate GID ranges for this user.
+    #[serde(default)]
+    pub sub_gid_ranges: Vec<subid::Range>,
     #[serde(flatten)]
     pub password: Password,
+}
+
+impl User {
+    pub fn has_sub_id_config(&self) -> bool {
+        self.auto_sub_id_range || !self.sub_uid_ranges.is_empty() || !self.sub_gid_ranges.is_empty()
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -56,6 +73,7 @@ pub struct Group {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default)]
     pub users: Vec<User>,
@@ -102,7 +120,13 @@ mod tests {
                 },
                 {
                     "name": "barebones",
-                }
+                },
+                {
+                    "isNormal": true,
+                    "name": "hassubids",
+                    "autoSubIdRange": true,
+                    "subUidRanges": [ { "start": 200_000, "count": 131_072 } ],
+                },
             ],
             "groups": [
                 {

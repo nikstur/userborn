@@ -10,6 +10,12 @@
   same permissions as before. This enables setups where `/etc/shadow` is owned
   by the `shadow` group with mode `640` and `unix_chkpwd` only has the `setgid`
   bit. Most notably, this is the default on Debian/Ubuntu derivatives.
+- Userborn now manages `/etc/subuid` and `/etc/subgid`. Per-user explicit
+  ranges (`subUidRanges`, `subGidRanges`) are written verbatim, and
+  `autoSubIdRange` allocates a stable, non-overlapping range that is
+  preserved across generations. Like UIDs and GIDs, existing subordinate id
+  entries are never removed so a range cannot be reassigned to a different
+  owner. Cross-owner overlap is refused outright.
 
 ## 0.5.0
 
