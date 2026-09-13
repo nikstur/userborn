@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 /// # User
@@ -89,12 +89,53 @@ pub struct Group {
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
+    /// Range for dynamically allocated normal UIDs (login.defs `UID_MIN`/`UID_MAX`).
+    #[serde(default)]
+    pub normal_uid_range: IdRange,
+    /// Range for dynamically allocated normal GIDs (login.defs `GID_MIN`/`GID_MAX`).
+    #[serde(default)]
+    pub normal_gid_range: IdRange,
     /// Users to manage.
     #[serde(default)]
     pub users: Vec<User>,
     /// Groups to manage.
     #[serde(default)]
     pub groups: Vec<Group>,
+}
+
+/// The lowest ID considered "normal" (i.e. not a system ID).
+pub const NORMAL_ID_MIN: u32 = 1000;
+
+/// Inclusive range from which normal IDs are dynamically allocated.
+#[derive(Deserialize, Debug, Clone, Copy)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+pub struct IdRange {
+    pub min: u32,
+    pub max: u32,
+}
+
+impl Default for IdRange {
+    fn default() -> Self {
+        Self {
+            min: NORMAL_ID_MIN,
+            max: 29999,
+        }
+    }
+}
+
+impl IdRange {
+    pub fn validate(self) -> Result<()> {
+        if self.min > self.max {
+            bail!("Invalid ID range: min ({}) > max ({})", self.min, self.max);
+        }
+        if self.min < NORMAL_ID_MIN {
+            bail!(
+                "Invalid ID range: min ({}) must be at least {NORMAL_ID_MIN}",
+                self.min
+            );
+        }
+        Ok(())
+    }
 }
 
 /// Range of subordiate IDs to create.
@@ -111,7 +152,16 @@ impl Config {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let contents = fs::read(&path)
             .with_context(|| format!("Failed to read {}", path.as_ref().display()))?;
-        serde_json::from_slice(&contents).context("Failed to parse config")
+        let config: Self = serde_json::from_slice(&contents).context("Failed to parse config")?;
+        config
+            .normal_uid_range
+            .validate()
+            .context("normalUidRange")?;
+        config
+            .normal_gid_range
+            .validate()
+            .context("normalGidRange")?;
+        Ok(config)
     }
 
     #[must_use]
@@ -132,6 +182,8 @@ mod tests {
     #[test]
     fn config() -> Result<()> {
         let value = serde_json::json!({
+            "normalUidRange": { "min": 30000, "max": 39999 },
+            "normalGidRange": { "min": 40000, "max": 49999 },
             "users": [
                 {
                     "isNormal": true,
@@ -169,5 +221,26 @@ mod tests {
 
         serde_json::from_value::<Config>(value)?;
         Ok(())
+    }
+
+    #[test]
+    fn validate_range() {
+        assert!(IdRange::default().validate().is_ok());
+        assert!(
+            IdRange {
+                min: 999,
+                max: 2000
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            IdRange {
+                min: 2000,
+                max: 1999
+            }
+            .validate()
+            .is_err()
+        );
     }
 }

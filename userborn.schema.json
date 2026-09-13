@@ -4,6 +4,14 @@
   "description": "Complete configuration for a generation of users and groups.",
   "type": "object",
   "properties": {
+    "normalUidRange": {
+      "description": "Range for dynamically allocated normal UIDs (login.defs `UID_MIN`/`UID_MAX`).",
+      "$ref": "#/$defs/IdRange"
+    },
+    "normalGidRange": {
+      "description": "Range for dynamically allocated normal GIDs (login.defs `GID_MIN`/`GID_MAX`).",
+      "$ref": "#/$defs/IdRange"
+    },
     "users": {
       "description": "Users to manage.",
       "type": "array",
@@ -20,6 +28,26 @@
     }
   },
   "$defs": {
+    "IdRange": {
+      "description": "Inclusive range from which normal IDs are dynamically allocated.",
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "max": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ]
+    },
     "User": {
       "title": "User",
       "description": "The configuration for a single user.",

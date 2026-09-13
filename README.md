@@ -120,6 +120,21 @@ The config file is specified in a [provided JSON
 schema](./userborn.schema.json) which you can use to see available options and
 to validate your config.
 
+#### Normal ID Ranges
+
+Normal UIDs/GIDs are dynamically allocated from 1000 to 29999 (inclusive) by
+default. `normalUidRange`/`normalGidRange` change this, e.g. to keep statically
+assigned IDs (such as for NFS) outside of dynamic allocation:
+
+```json
+{
+  "normalUidRange": { "min": 30000, "max": 39999 },
+  "normalGidRange": { "min": 30000, "max": 39999 }
+}
+```
+
+System IDs are always allocated from 1 to 999; `min` must be at least 1000.
+
 ### Environment Variables
 
 - `USERBORN_MUTABLE_USERS`: Set this to the string `true` if you want to enable

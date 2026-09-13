@@ -235,7 +235,7 @@ fn update_users_and_groups(
     passwd_db: &mut Passwd,
     shadow_db: &mut Shadow,
 ) {
-    let reserved = ReservedIds::from_config(config);
+    let id_policy = IdPolicy::from_config(config);
 
     let mut groups_in_config: BTreeSet<&str> = BTreeSet::new();
 
@@ -272,7 +272,7 @@ fn update_users_and_groups(
                 group_config.members.clone()
             };
             existing_entry.update(desired_members);
-        } else if let Err(e) = create_group(group_config, group_db, &reserved.gids) {
+        } else if let Err(e) = create_group(group_config, group_db, &id_policy) {
             log::error!("Failed to create group {}: {e:#}", group_config.name);
         }
     }
@@ -290,7 +290,8 @@ fn update_users_and_groups(
             if let Err(e) = update_user(existing_entry, user_config, group_db, shadow_db) {
                 log::error!("Failed to update user {}: {e:#}", user_config.name);
             }
-        } else if let Err(e) = create_user(user_config, group_db, passwd_db, shadow_db, &reserved) {
+        } else if let Err(e) = create_user(user_config, group_db, passwd_db, shadow_db, &id_policy)
+        {
             log::error!("Failed to create user {}: {e:#}", user_config.name);
         }
     }
@@ -352,22 +353,26 @@ fn update_users_and_groups(
     }
 }
 
-/// Statically declared UIDs and GIDs from the config.
+/// Constraints for dynamic UID/GID allocation derived from the config.
 ///
-/// These must never be handed out by dynamic allocation, otherwise creating the
-/// statically configured user/group would fail depending on config order.
-struct ReservedIds {
-    uids: BTreeSet<u32>,
-    gids: BTreeSet<u32>,
+/// Statically declared UIDs/GIDs must never be handed out by dynamic allocation, otherwise
+/// creating the statically configured user/group would fail depending on config order.
+struct IdPolicy {
+    reserved_uids: BTreeSet<u32>,
+    reserved_gids: BTreeSet<u32>,
+    normal_uid_range: config::IdRange,
+    normal_gid_range: config::IdRange,
 }
 
-impl ReservedIds {
+impl IdPolicy {
     /// A user without an explicit group re-uses its UID as GID for its implicit primary group,
     /// so such static UIDs are also reserved as GIDs.
     fn from_config(config: &Config) -> Self {
         Self {
-            uids: config.users.iter().filter_map(|u| u.uid).collect(),
-            gids: config
+            normal_uid_range: config.normal_uid_range,
+            normal_gid_range: config.normal_gid_range,
+            reserved_uids: config.users.iter().filter_map(|u| u.uid).collect(),
+            reserved_gids: config
                 .groups
                 .iter()
                 .filter_map(|g| g.gid)
@@ -387,13 +392,17 @@ impl ReservedIds {
 fn create_group(
     group_config: &config::Group,
     group_db: &mut Group,
-    reserved_gids: &BTreeSet<u32>,
+    id_policy: &IdPolicy,
 ) -> Result<()> {
     let gid = if let Some(gid) = group_config.gid {
         gid
     } else {
         group_db
-            .allocate_gid(group_config.is_normal, reserved_gids)
+            .allocate_gid(
+                group_config.is_normal,
+                &id_policy.reserved_gids,
+                id_policy.normal_gid_range,
+            )
             .context("Failed to allocate new GID")?
     };
 
@@ -418,7 +427,7 @@ fn create_user(
     group_db: &mut Group,
     passwd_db: &mut Passwd,
     shadow_db: &mut Shadow,
-    reserved: &ReservedIds,
+    id_policy: &IdPolicy,
 ) -> Result<()> {
     log::debug!("Creating new passwd entry for {}...", user_config.name);
 
@@ -426,7 +435,11 @@ fn create_user(
         uid
     } else {
         passwd_db
-            .allocate_uid(user_config.is_normal, &reserved.uids)
+            .allocate_uid(
+                user_config.is_normal,
+                &id_policy.reserved_uids,
+                id_policy.normal_uid_range,
+            )
             .context("Failed to allocate new UID")?
     };
 
@@ -449,7 +462,7 @@ fn create_user(
             members: BTreeSet::from([user_config.name.clone()]),
         };
 
-        create_group(&group_config, group_db, &reserved.gids)
+        create_group(&group_config, group_db, id_policy)
             .with_context(|| format!("Failed to create group for user {}", user_config.name))?;
         uid
     };
@@ -676,7 +689,7 @@ mod tests {
         passwd_db: &mut Passwd,
         shadow_db: &mut Shadow,
     ) -> Result<()> {
-        let uid = passwd_db.allocate_uid(true, &BTreeSet::new())?;
+        let uid = passwd_db.allocate_uid(true, &BTreeSet::new(), config::IdRange::default())?;
         passwd_db.insert(&passwd::Entry::new(
             name.into(),
             uid,
@@ -691,7 +704,7 @@ mod tests {
         ))?;
         group_db.insert(&group::Entry::new(
             name.into(),
-            group_db.allocate_gid(true, &BTreeSet::new())?,
+            group_db.allocate_gid(true, &BTreeSet::new(), config::IdRange::default())?,
             BTreeSet::from([name.into()]),
         ))?;
 
@@ -724,6 +737,42 @@ mod tests {
         let expected_group = expect![[r#"
             bbb:x:1000:bbb
             aaa:x:1001:aaa
+        "#]];
+        expected_group.assert_eq(&group_db.to_buffer());
+
+        Ok(())
+    }
+
+    #[test]
+    fn custom_normal_id_range() -> Result<()> {
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "normalUidRange": { "min": 30000, "max": 39999 },
+            "normalGidRange": { "min": 40000, "max": 49999 },
+            "groups": [
+                { "name": "dyngroup", "isNormal": true },
+            ],
+            "users": [
+                { "name": "static", "isNormal": true, "uid": 1000 },
+                { "name": "dynamic", "isNormal": true },
+            ],
+        }))?;
+
+        let mut group_db = Group::default();
+        let mut passwd_db = Passwd::default();
+        let mut shadow_db = Shadow::default();
+
+        update_users_and_groups(&config, None, &mut group_db, &mut passwd_db, &mut shadow_db);
+
+        let expected_passwd = expect![[r#"
+            static:x:1000:1000:::/run/current-system/sw/bin/nologin
+            dynamic:x:30000:30000:::/run/current-system/sw/bin/nologin
+        "#]];
+        expected_passwd.assert_eq(&passwd_db.to_buffer());
+
+        let expected_group = expect![[r#"
+            static:x:1000:static
+            dynamic:x:30000:dynamic
+            dyngroup:x:40000:
         "#]];
         expected_group.assert_eq(&group_db.to_buffer());
 

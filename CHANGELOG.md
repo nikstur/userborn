@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Dynamic allocation ranges for normal UIDs/GIDs are now configurable via
+  `normalUidRange`/`normalGidRange` (default: 1000 to 29999), mirroring
+  `UID_MIN`/`UID_MAX`/`GID_MIN`/`GID_MAX` from login.defs.
 - Added a JSON schema that specifies the configuration format.
 
 ## 1.0.1

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, bail};
 
-use crate::{fs::FromBuffer, id};
+use crate::{config, fs::FromBuffer, id};
 
 /// Password for /etc/passwd indicating that the actual password is stored in /etc/shadow.
 const PASSWORD_IN_SHADOW: &str = "x";
@@ -178,10 +178,15 @@ impl Passwd {
     /// Allocate a new (i.e. unused) UID.
     ///
     /// Returns `Err` if it cannot allocate a new UID because all in the range are already used.
-    pub fn allocate_uid(&self, is_normal: bool, reserved_uids: &BTreeSet<u32>) -> Result<u32> {
+    pub fn allocate_uid(
+        &self,
+        is_normal: bool,
+        reserved_uids: &BTreeSet<u32>,
+        normal_range: config::IdRange,
+    ) -> Result<u32> {
         let mut allocated_uids = self.entries.keys().copied().collect::<BTreeSet<u32>>();
         allocated_uids.extend(reserved_uids);
-        id::allocate(&allocated_uids, is_normal)
+        id::allocate(&allocated_uids, is_normal, normal_range)
     }
 
     pub fn entries(&self) -> Vec<&Entry> {

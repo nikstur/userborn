@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, bail};
 
-use crate::{fs::FromBuffer, id};
+use crate::{config, fs::FromBuffer, id};
 
 #[derive(Clone)]
 pub struct Entry {
@@ -138,10 +138,15 @@ impl Group {
     /// Allocate a new (i.e. unused) GID.
     ///
     /// Returns `Err` if it cannot allocate a new GID because all in the range are already used.
-    pub fn allocate_gid(&self, is_normal: bool, reserved_gids: &BTreeSet<u32>) -> Result<u32> {
+    pub fn allocate_gid(
+        &self,
+        is_normal: bool,
+        reserved_gids: &BTreeSet<u32>,
+        normal_range: config::IdRange,
+    ) -> Result<u32> {
         let mut allocated_gids = self.entries.keys().copied().collect::<BTreeSet<u32>>();
         allocated_gids.extend(reserved_gids);
-        id::allocate(&allocated_gids, is_normal)
+        id::allocate(&allocated_gids, is_normal, normal_range)
     }
 
     pub fn contains_gid(&self, gid: u32) -> bool {
