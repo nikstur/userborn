@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `expires` to set the account expiration date in `/etc/shadow` so PAM
+  denies login after that date.
 - Added a JSON schema that specifies the configuration format.
 - A `hashedPasswordFile` that cannot be read no longer prevents the user from
   being created (#68). Userborn now logs a warning and creates the user with a
