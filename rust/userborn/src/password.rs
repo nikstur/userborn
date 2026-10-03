@@ -40,9 +40,17 @@ impl HashedPassword {
     ) -> Result<Option<Self>> {
         let hashed_password = if let Some(path) = &password_config.hashed_password_file {
             log::debug!("Using hashedPasswordFile {path:?} for user {name}...");
-            let hashed_password = fs::read_to_string(path)
-                .with_context(|| format!("Failed to read hashedPasswordFile {path:?}"))?;
-            Some(Self::Override(hashed_password.trim().into()))
+            match fs::read_to_string(path) {
+                Ok(hashed_password) => Some(Self::Override(hashed_password.trim().into())),
+                Err(e) => {
+                    // Don't fail here. A new user is still created with a locked password and
+                    // an existing user keeps their current password.
+                    log::warn!(
+                        "Failed to read hashedPasswordFile {path:?} for user {name}: {e}. Not setting a password."
+                    );
+                    None
+                }
+            }
         } else if let Some(hashed_password) = &password_config.hashed_password {
             log::debug!("Using hashedPassword for user {name}...");
             Some(Self::Override(hashed_password.clone()))

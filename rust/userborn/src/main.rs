@@ -731,6 +731,49 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_hashed_password_file() -> Result<()> {
+        // Regression test for https://github.com/nikstur/userborn/issues/68
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "users": [
+                {
+                    // Should be created with a locked password.
+                    "isNormal": true,
+                    "name": "new",
+                    "hashedPasswordFile": "/does/not/exist",
+                },
+                {
+                    // Should keep its current password.
+                    "isNormal": true,
+                    "name": "existing",
+                    "hashedPasswordFile": "/does/not/exist",
+                },
+            ],
+        }))?;
+
+        let mut group_db = Group::default();
+        let mut passwd_db = Passwd::default();
+        let mut shadow_db = Shadow::default();
+
+        useradd("existing", &mut group_db, &mut passwd_db, &mut shadow_db)?;
+
+        update_users_and_groups(&config, None, &mut group_db, &mut passwd_db, &mut shadow_db);
+
+        let expected_passwd = expect![[r#"
+            existing:x:1000:1000:I was created imperatively:/home/existing:/bin/bash
+            new:x:1001:1001:::/run/current-system/sw/bin/nologin
+        "#]];
+        expected_passwd.assert_eq(&passwd_db.to_buffer());
+
+        let expected_shadow = expect![[r#"
+            existing:fake-pw-hash:1::::::
+            new:!*:1::::::
+        "#]];
+        expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
+
+        Ok(())
+    }
+
+    #[test]
     #[allow(clippy::too_many_lines)]
     fn update_users_and_groups_across_generations_mutable() -> Result<()> {
         let mut group_db = Group::default();
