@@ -71,6 +71,13 @@
             "null"
           ]
         },
+        "expires": {
+          "description": "Account expiration date (`YYYY-MM-DD`). Unset clears it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "autoSubIdRange": {
           "description": "Whether to automatically allocate a subordinate UID/GID range for this user.",
           "type": "boolean",

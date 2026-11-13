@@ -30,6 +30,8 @@ pub struct User {
     pub home: Option<String>,
     /// Shell of the user.
     pub shell: Option<String>,
+    /// Account expiration date (`YYYY-MM-DD`). Unset clears it.
+    pub expires: Option<String>,
     /// Whether to automatically allocate a subordinate UID/GID range for this user.
     #[serde(default)]
     pub auto_sub_id_range: bool,
@@ -139,6 +141,7 @@ mod tests {
                     "home": "/home/normalo",
                     "shell": "/bin/bash",
                     "password": "insecure",
+                    "expires": "2030-01-31",
                 },
                 {
                     "isNormal": false,

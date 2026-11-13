@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 use crate::{fs::FromBuffer, passwd::Passwd};
 
@@ -25,8 +25,13 @@ pub struct Entry {
 
 impl Entry {
     /// Create a new /etc/shadow entry.
-    pub fn new(name: String, hashed_password: Option<String>) -> Self {
-        Self {
+    pub fn new(
+        name: String,
+        hashed_password: Option<String>,
+        expires: Option<&str>,
+    ) -> Result<Self> {
+        let account_expiration_date = expiration_field(expires, &name)?;
+        Ok(Self {
             name,
             password: hashed_password.unwrap_or(PASSWORD_LOCKED_AND_INVALID.into()),
             last_password_change: "1".into(),
@@ -34,19 +39,25 @@ impl Entry {
             maximum_password_age: String::new(),
             password_warning_period: String::new(),
             password_inactivity_period: String::new(),
-            account_expiration_date: String::new(),
+            account_expiration_date,
             reserved: String::new(),
-        }
+        })
     }
 
     /// Update an /etc/shadow entry.
-    pub fn update(&mut self, password: Option<String>) {
+    pub fn update(&mut self, password: Option<String>, expires: Option<&str>) -> Result<()> {
         if let Some(password) = password
             && self.password != password
         {
             log::info!("Updating password of user {}...", self.name);
             self.password = password;
         }
+        let account_expiration_date = expiration_field(expires, &self.name)?;
+        if self.account_expiration_date != account_expiration_date {
+            log::info!("Updating expiration date of user {}...", self.name);
+            self.account_expiration_date = account_expiration_date;
+        }
+        Ok(())
     }
 
     /// Lock the account by resetting its password.
@@ -170,6 +181,46 @@ impl FromBuffer for Shadow {
     }
 }
 
+/// shadow(5) expiration field: days since epoch, or empty for "never".
+fn expiration_field(expires: Option<&str>, name: &str) -> Result<String> {
+    expires
+        .map(|date| {
+            days_since_epoch(date)
+                .map(|d| d.to_string())
+                .with_context(|| format!("Invalid expiration date {date:?} for user {name}"))
+        })
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+fn days_since_epoch(date: &str) -> Result<i64> {
+    let mut parts = date.splitn(3, '-').map(str::parse::<i64>);
+    let (Some(Ok(year)), Some(Ok(month)), Some(Ok(day)), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        bail!("expected format YYYY-MM-DD");
+    };
+    if !(1..=12).contains(&month) || !(1..=days_in_month(year, month)).contains(&day) {
+        return Err(anyhow!("date does not exist"));
+    }
+    // http://howardhinnant.github.io/date_algorithms.html#days_from_civil
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Ok(era * 146_097 + doe - 719_468)
+}
+
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        _ => 31,
+    }
+}
+
 /// Determine whether a hashing scheme used in a password is secure.
 ///
 /// Hashing schemes are defined in `crypt(5)`.
@@ -250,6 +301,38 @@ mod tests {
             root:$y$j9T$qG.o43YGDIMcN50nQGECv/$sYj8J9xpUsZ75SERZtY4.BMD8kuxXuAcc80L8v4UsI3:19911::::::
         "]];
         expected.assert_eq(&recreated_buffer);
+    }
+
+    #[test]
+    fn parse_expiration_date() {
+        assert_eq!(days_since_epoch("1970-01-01").ok(), Some(0));
+        assert_eq!(days_since_epoch("1969-12-31").ok(), Some(-1));
+        assert_eq!(days_since_epoch("2000-02-29").ok(), Some(11016));
+        assert_eq!(days_since_epoch("2024-03-01").ok(), Some(19783));
+        for invalid in [
+            "",
+            "2024",
+            "2024-01",
+            "2024-01-01-01",
+            "2024-13-01",
+            "2023-02-29",
+            "x-1-1",
+        ] {
+            assert!(
+                days_since_epoch(invalid).is_err(),
+                "{invalid} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn set_and_clear_expiration() -> Result<()> {
+        let mut entry = Entry::new("gary".into(), None, Some("2024-03-01"))?;
+        assert_eq!(entry.to_line(), "gary:!*:1:::::19783:");
+        entry.update(None, None)?;
+        assert_eq!(entry.to_line(), "gary:!*:1::::::");
+        assert!(Entry::new("gary".into(), None, Some("soon")).is_err());
+        Ok(())
     }
 
     #[test]

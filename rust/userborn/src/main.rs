@@ -543,7 +543,7 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
             HashedPassword::Initial(_) => None,
         });
 
-        existing_entry.update(hashed_password);
+        existing_entry.update(hashed_password, user_config.expires.as_deref())?;
     } else {
         log::debug!("Creating shadow entry for {}...", user_config.name);
 
@@ -554,7 +554,11 @@ fn ensure_shadow(user_config: &config::User, shadow_db: &mut Shadow) -> Result<(
                 },
             );
 
-        let new_entry = shadow::Entry::new(user_config.name.clone(), hashed_password);
+        let new_entry = shadow::Entry::new(
+            user_config.name.clone(),
+            hashed_password,
+            user_config.expires.as_deref(),
+        )?;
 
         shadow_db.insert(&new_entry).with_context(|| {
             format!(
@@ -597,6 +601,7 @@ mod tests {
                     "home": "/home/normalo",
                     "shell": "/bin/bash",
                     "hashedPassword": "$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4", // "hello"
+                    "expires": "2024-03-01",
                 },
             ],
             "groups": [
@@ -623,6 +628,8 @@ mod tests {
                     // This shouldn't change the hash as it hashes the same as the existing
                     // password
                     "password": "hello",
+                    // This should update the expiration date
+                    "expires": "2030-01-01",
                 },
                 {
                     "isNormal": false,
@@ -661,6 +668,7 @@ mod tests {
                     // here anymore.
                     "name": "normalo",
                     "description": "I'm normal I swear",
+                    // Dropping `expires` should clear the expiration date.
                     // This should change the password
                     "hashedPassword": "$y$j9T$CZSAJTLCfrBvcCgvOTY4W1$G7uzyX3O6K.DR8KJLL/oL.8EREPSRTIjBn76SpvcH4A",
                 },
@@ -688,7 +696,8 @@ mod tests {
         shadow_db.insert(&shadow::Entry::new(
             name.into(),
             Some("fake-pw-hash".into()),
-        ))?;
+            None,
+        )?)?;
         group_db.insert(&group::Entry::new(
             name.into(),
             group_db.allocate_gid(true, &BTreeSet::new())?,
@@ -827,7 +836,7 @@ mod tests {
         let expected_shadow = expect![[r#"
             root:!*:1::::::
             mutable:fake-pw-hash:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1:::::19783:
         "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
@@ -863,7 +872,7 @@ mod tests {
             root:!*:1::::::
             initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
             mutable:$y$j9T$JvMN.S5D/7iVsSOh.vK1S1$rWn2Uie/c85gD.gJQZCDHOok6SH.Eg.BR3o6zPIDPM.:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1:::::21915:
         "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
@@ -958,7 +967,7 @@ mod tests {
         let expected_shadow = expect![[r#"
             root:!*:1::::::
             mutable:!*:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1:::::19783:
         "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
@@ -993,7 +1002,7 @@ mod tests {
             root:!*:1::::::
             initial:$y$j9T$2e5ARUyMfmJ0nW9ZMPFg50$EGgRGQBqq0r/fxRlIRXL86K61o/ESEsIdVZYkyQvyN2:1::::::
             mutable:$y$j9T$JvMN.S5D/7iVsSOh.vK1S1$rWn2Uie/c85gD.gJQZCDHOok6SH.Eg.BR3o6zPIDPM.:1::::::
-            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1::::::
+            normalo:$y$j9T$BOO.gstYxWh8Lw.njfytQ/$K4sN06nBh0qFGegFS0hn5YkEOzzrr7woGHlSiUuCqS4:1:::::21915:
         "#]];
         expected_shadow.assert_eq(&shadow_db.to_buffer_sorted(&passwd_db));
 
